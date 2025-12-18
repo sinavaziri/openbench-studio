@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiKeyPublic, Benchmark, RunConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import RunForm from '../components/RunForm';
 
+interface LocationState {
+  prefill?: RunConfig;
+}
+
 export default function NewRun() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, loading: authLoading } = useAuth();
+  
+  // Get prefill from location state (from "Run Again")
+  const prefillConfig = (location.state as LocationState)?.prefill;
   
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyPublic[]>([]);
@@ -113,6 +121,7 @@ export default function NewRun() {
             benchmarks={benchmarks}
             onSubmit={handleSubmit}
             loading={submitting}
+            prefill={prefillConfig}
           />
         )}
       </div>

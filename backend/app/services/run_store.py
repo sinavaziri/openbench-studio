@@ -1,7 +1,10 @@
 import json
+import shutil
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+from app.core.config import RUNS_DIR
 from app.db.session import get_db
 from app.db.models import Run, RunConfig, RunCreate, RunStatus, RunSummary
 
@@ -24,8 +27,8 @@ class RunStore:
                 """
                 INSERT INTO runs (
                     run_id, user_id, benchmark, model, status, created_at,
-                    started_at, finished_at, artifact_dir, exit_code, error, config_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    started_at, finished_at, artifact_dir, exit_code, error, config_json, tags_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -40,6 +43,7 @@ class RunStore:
                     run.exit_code,
                     run.error,
                     config.model_dump_json(),
+                    json.dumps(run.tags),
                 ),
             )
             await db.commit()
@@ -68,23 +72,60 @@ class RunStore:
                 return None
             return self._row_to_run(row)
 
-    async def list_runs(self, limit: int = 50, user_id: Optional[str] = None) -> list[RunSummary]:
+    async def list_runs(
+        self,
+        limit: int = 50,
+        user_id: Optional[str] = None,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        benchmark: Optional[str] = None,
+        tag: Optional[str] = None,
+    ) -> list[RunSummary]:
         """
-        List recent runs.
+        List recent runs with optional filtering.
         
-        If user_id is provided, only returns runs belonging to that user
-        or legacy runs (with no owner).
+        Args:
+            limit: Maximum number of runs to return
+            user_id: Filter by user (also shows legacy runs with no owner)
+            search: Search in benchmark and model names
+            status: Filter by status (queued, running, completed, failed, canceled)
+            benchmark: Filter by exact benchmark name
+            tag: Filter by tag (runs containing this tag)
         """
+        conditions = []
+        params: list = []
+        
+        # User filter (always show legacy runs too)
+        if user_id is not None:
+            conditions.append("(user_id = ? OR user_id IS NULL)")
+            params.append(user_id)
+        
+        # Search filter (benchmark or model)
+        if search:
+            conditions.append("(benchmark LIKE ? OR model LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+        
+        # Status filter
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        
+        # Benchmark filter
+        if benchmark:
+            conditions.append("benchmark = ?")
+            params.append(benchmark)
+        
+        # Tag filter (JSON contains)
+        if tag:
+            conditions.append("tags_json LIKE ?")
+            params.append(f'%"{tag}"%')
+        
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        query = f"SELECT * FROM runs WHERE {where_clause} ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        
         async with get_db() as db:
-            if user_id is not None:
-                cursor = await db.execute(
-                    "SELECT * FROM runs WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC LIMIT ?",
-                    (user_id, limit),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
-                )
+            cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
             return [self._row_to_summary(row) for row in rows]
 
@@ -141,6 +182,114 @@ class RunStore:
         
         return await self.get_run(run_id)
 
+    async def delete_run(self, run_id: str, user_id: Optional[str] = None) -> bool:
+        """
+        Delete a run and its artifacts.
+        
+        Args:
+            run_id: The run ID to delete
+            user_id: If provided, only deletes if user owns the run
+            
+        Returns:
+            True if run was deleted, False if not found or not authorized
+        """
+        # First check the run exists and user has access
+        run = await self.get_run(run_id, user_id=user_id)
+        if run is None:
+            return False
+        
+        # Don't delete running runs
+        if run.status == RunStatus.RUNNING:
+            return False
+        
+        # Delete from database
+        async with get_db() as db:
+            if user_id is not None:
+                await db.execute(
+                    "DELETE FROM runs WHERE run_id = ? AND (user_id = ? OR user_id IS NULL)",
+                    (run_id, user_id),
+                )
+            else:
+                await db.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+            await db.commit()
+        
+        # Delete artifact directory if it exists
+        artifact_path = RUNS_DIR / run_id
+        if artifact_path.exists():
+            shutil.rmtree(artifact_path, ignore_errors=True)
+        
+        return True
+
+    async def update_tags(self, run_id: str, tags: list[str], user_id: Optional[str] = None) -> Optional[Run]:
+        """
+        Update tags for a run.
+        
+        Args:
+            run_id: The run ID to update
+            tags: New list of tags
+            user_id: If provided, only updates if user owns the run
+            
+        Returns:
+            Updated run or None if not found/authorized
+        """
+        # Check the run exists and user has access
+        run = await self.get_run(run_id, user_id=user_id)
+        if run is None:
+            return None
+        
+        # Normalize tags (lowercase, unique, sorted)
+        normalized_tags = sorted(set(tag.lower().strip() for tag in tags if tag.strip()))
+        
+        async with get_db() as db:
+            if user_id is not None:
+                await db.execute(
+                    "UPDATE runs SET tags_json = ? WHERE run_id = ? AND (user_id = ? OR user_id IS NULL)",
+                    (json.dumps(normalized_tags), run_id, user_id),
+                )
+            else:
+                await db.execute(
+                    "UPDATE runs SET tags_json = ? WHERE run_id = ?",
+                    (json.dumps(normalized_tags), run_id),
+                )
+            await db.commit()
+        
+        return await self.get_run(run_id, user_id=user_id)
+
+    async def get_all_tags(self, user_id: Optional[str] = None) -> list[str]:
+        """Get all unique tags across all runs for a user."""
+        async with get_db() as db:
+            if user_id is not None:
+                cursor = await db.execute(
+                    "SELECT DISTINCT tags_json FROM runs WHERE (user_id = ? OR user_id IS NULL) AND tags_json IS NOT NULL",
+                    (user_id,),
+                )
+            else:
+                cursor = await db.execute(
+                    "SELECT DISTINCT tags_json FROM runs WHERE tags_json IS NOT NULL"
+                )
+            rows = await cursor.fetchall()
+        
+        all_tags = set()
+        for row in rows:
+            if row["tags_json"]:
+                try:
+                    tags = json.loads(row["tags_json"])
+                    all_tags.update(tags)
+                except json.JSONDecodeError:
+                    pass
+        
+        return sorted(all_tags)
+
+    def _parse_tags(self, row) -> list[str]:
+        """Parse tags from a database row."""
+        tags_json = row.get("tags_json") if hasattr(row, "get") else (row["tags_json"] if "tags_json" in row.keys() else None)
+        if tags_json:
+            try:
+                return json.loads(tags_json)
+            except json.JSONDecodeError:
+                pass
+        return []
+
     def _row_to_run(self, row) -> Run:
         """Convert a database row to a Run model."""
         config = None
@@ -162,6 +311,7 @@ class RunStore:
             config=config,
             primary_metric=row["primary_metric"],
             primary_metric_name=row["primary_metric_name"],
+            tags=self._parse_tags(row),
         )
 
     def _row_to_summary(self, row) -> RunSummary:
@@ -175,6 +325,7 @@ class RunStore:
             finished_at=datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None,
             primary_metric=row["primary_metric"],
             primary_metric_name=row["primary_metric_name"],
+            tags=self._parse_tags(row),
         )
 
 

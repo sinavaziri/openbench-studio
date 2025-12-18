@@ -28,7 +28,7 @@ function StatusIndicator({ status }: { status: RunSummary['status'] }) {
   );
 }
 
-function formatMetric(value: number | undefined, name?: string): string {
+function formatMetric(value: number | undefined, _name?: string): string {
   if (value === undefined || value === null) return '—';
   
   // Format as percentage if value is between 0-1
@@ -124,17 +124,18 @@ export default function RunTable({
   }
 
   const gridCols = selectable
-    ? 'grid-cols-[40px_180px_1fr_100px_120px_100px]'
-    : 'grid-cols-[200px_1fr_100px_120px_100px]';
+    ? 'grid-cols-[40px_160px_1fr_90px_100px_120px_80px]'
+    : 'grid-cols-[180px_1fr_90px_100px_120px_80px]';
 
   return (
     <div className="border-t border-[#1a1a1a]">
       {/* Header */}
-      <div className={`grid ${gridCols} gap-8 py-3 border-b border-[#1a1a1a] text-[11px] text-[#555] uppercase tracking-[0.1em]`}>
+      <div className={`grid ${gridCols} gap-6 py-3 border-b border-[#1a1a1a] text-[11px] text-[#555] uppercase tracking-[0.1em]`}>
         {selectable && <div />}
         <div>Benchmark</div>
         <div>Model</div>
         <div>Result</div>
+        <div>Tags</div>
         <div>Status</div>
         <div className="text-right">Time</div>
       </div>
@@ -143,12 +144,16 @@ export default function RunTable({
         const isSelected = selectedIds.has(run.run_id);
         const isCompleted = run.status === 'completed';
 
+        const tags = run.tags || [];
+        const displayTags = tags.slice(0, 2);
+        const moreTags = tags.length > 2 ? tags.length - 2 : 0;
+
         if (selectable) {
           return (
             <div
               key={run.run_id}
               onClick={(e) => handleRowClick(run.run_id, e)}
-              className={`grid ${gridCols} gap-8 py-4 border-b border-[#1a1a1a] transition-colors cursor-pointer ${
+              className={`grid ${gridCols} gap-6 py-4 border-b border-[#1a1a1a] transition-colors cursor-pointer ${
                 isSelected 
                   ? 'bg-[#1a1a18]' 
                   : 'hover:bg-[#111]'
@@ -180,7 +185,7 @@ export default function RunTable({
                 </Link>
               </div>
               <div>
-                <span className="text-[14px] text-[#666]">
+                <span className="text-[14px] text-[#666] truncate block">
                   {run.model}
                 </span>
               </div>
@@ -191,6 +196,19 @@ export default function RunTable({
                   </span>
                 ) : (
                   <span className="text-[14px] text-[#444]">—</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {displayTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-1.5 py-0.5 text-[10px] text-[#888] bg-[#1a1a1a] border border-[#222]"
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {moreTags > 0 && (
+                  <span className="text-[10px] text-[#555]">+{moreTags}</span>
                 )}
               </div>
               <div>
@@ -209,7 +227,7 @@ export default function RunTable({
           <Link
             key={run.run_id}
             to={`/runs/${run.run_id}`}
-            className={`grid ${gridCols} gap-8 py-4 border-b border-[#1a1a1a] hover:bg-[#111] transition-colors group`}
+            className={`grid ${gridCols} gap-6 py-4 border-b border-[#1a1a1a] hover:bg-[#111] transition-colors group`}
           >
             <div>
               <span className="text-[15px] text-white">
@@ -217,7 +235,7 @@ export default function RunTable({
               </span>
             </div>
             <div>
-              <span className="text-[14px] text-[#666]">
+              <span className="text-[14px] text-[#666] truncate block">
                 {run.model}
               </span>
             </div>
@@ -228,6 +246,19 @@ export default function RunTable({
                 </span>
               ) : (
                 <span className="text-[14px] text-[#444]">—</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {displayTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="px-1.5 py-0.5 text-[10px] text-[#888] bg-[#1a1a1a] border border-[#222]"
+                >
+                  {tag}
+                </span>
+              ))}
+              {moreTags > 0 && (
+                <span className="text-[10px] text-[#555]">+{moreTags}</span>
               )}
             </div>
             <div>

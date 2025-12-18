@@ -46,4 +46,12 @@ Thumbs.db
 # Logs (keep the directory but ignore specific logs if needed)
 # logs/*.log
 
+# Data directory (database and run artifacts)
+data/openbench.db
+data/runs/
 
+# Node modules
+node_modules/
+
+# Frontend build output
+frontend/dist/

@@ -150,6 +150,7 @@ class Run(BaseModel):
     config: Optional[RunConfig] = None
     primary_metric: Optional[float] = None
     primary_metric_name: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)  # User-defined tags for organization
 
 
 class RunCreate(BaseModel):
@@ -175,6 +176,12 @@ class RunSummary(BaseModel):
     finished_at: Optional[datetime] = None
     primary_metric: Optional[float] = None
     primary_metric_name: Optional[str] = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class RunTagsUpdate(BaseModel):
+    """Request body for updating run tags."""
+    tags: list[str]
 
 
 # =============================================================================

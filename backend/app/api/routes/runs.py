@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.auth import get_current_user, get_optional_user
 from app.core.config import RUNS_DIR
-from app.db.models import Run, RunCreate, RunStatus, RunSummary, User
+from app.db.models import Run, RunCreate, RunStatus, RunSummary, RunTagsUpdate, User
 from app.runner.artifacts import list_artifacts, read_command, read_log_tail, read_summary
 from app.runner.executor import executor
 from app.runner.progress_parser import parse_progress
@@ -39,11 +39,40 @@ async def create_run(
 @router.get("/runs", response_model=list[RunSummary])
 async def list_runs(
     limit: int = 50,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    benchmark: Optional[str] = None,
+    tag: Optional[str] = None,
     current_user: Optional[User] = Depends(get_optional_user),
 ):
-    """List recent runs for the current user."""
+    """
+    List recent runs with optional filtering.
+    
+    Query parameters:
+    - limit: Maximum number of runs (default 50)
+    - search: Search in benchmark and model names
+    - status: Filter by status (queued, running, completed, failed, canceled)
+    - benchmark: Filter by exact benchmark name
+    - tag: Filter by tag
+    """
     user_id = current_user.user_id if current_user else None
-    return await run_store.list_runs(limit=limit, user_id=user_id)
+    return await run_store.list_runs(
+        limit=limit,
+        user_id=user_id,
+        search=search,
+        status=status,
+        benchmark=benchmark,
+        tag=tag,
+    )
+
+
+@router.get("/runs/tags", response_model=list[str])
+async def list_all_tags(
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """Get all unique tags across all runs."""
+    user_id = current_user.user_id if current_user else None
+    return await run_store.get_all_tags(user_id=user_id)
 
 
 @router.get("/runs/{run_id}")
@@ -95,6 +124,52 @@ async def cancel_run(
         raise HTTPException(status_code=400, detail="Run is not currently running")
     
     return {"status": "canceled"}
+
+
+@router.delete("/runs/{run_id}")
+async def delete_run(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Delete a run and all its artifacts.
+    
+    Cannot delete runs that are currently running.
+    """
+    run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    if run.status == RunStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Cannot delete a running benchmark. Cancel it first.")
+    
+    success = await run_store.delete_run(run_id, user_id=current_user.user_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to delete run")
+    
+    return {"status": "deleted"}
+
+
+@router.patch("/runs/{run_id}/tags")
+async def update_run_tags(
+    run_id: str,
+    tags_update: RunTagsUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update tags for a run.
+    
+    Tags are normalized (lowercase, unique, sorted).
+    """
+    run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    updated_run = await run_store.update_tags(run_id, tags_update.tags, user_id=current_user.user_id)
+    if updated_run is None:
+        raise HTTPException(status_code=400, detail="Failed to update tags")
+    
+    return {"tags": updated_run.tags}
 
 
 async def tail_file(path: str, position: int = 0) -> tuple[list[str], int]:

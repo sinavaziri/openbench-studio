@@ -1,25 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Benchmark, RunConfig } from '../api/client';
 
 interface RunFormProps {
   benchmarks: Benchmark[];
   onSubmit: (config: RunConfig) => void;
   loading?: boolean;
+  prefill?: RunConfig;  // Pre-fill form from "Run Again"
 }
 
-export default function RunForm({ benchmarks, onSubmit, loading }: RunFormProps) {
-  const [benchmark, setBenchmark] = useState('');
-  const [model, setModel] = useState('');
-  const [limit, setLimit] = useState<number | undefined>(10);
+export default function RunForm({ benchmarks, onSubmit, loading, prefill }: RunFormProps) {
+  const [benchmark, setBenchmark] = useState(prefill?.benchmark || '');
+  const [model, setModel] = useState(prefill?.model || '');
+  const [limit, setLimit] = useState<number | undefined>(prefill?.limit ?? 10);
   
   // Advanced settings
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [temperature, setTemperature] = useState<number | undefined>(undefined);
-  const [topP, setTopP] = useState<number | undefined>(undefined);
-  const [maxTokens, setMaxTokens] = useState<number | undefined>(undefined);
-  const [timeout, setTimeout] = useState<number | undefined>(undefined);
-  const [epochs, setEpochs] = useState<number | undefined>(undefined);
-  const [maxConnections, setMaxConnections] = useState<number | undefined>(undefined);
+  const [temperature, setTemperature] = useState<number | undefined>(prefill?.temperature);
+  const [topP, setTopP] = useState<number | undefined>(prefill?.top_p);
+  const [maxTokens, setMaxTokens] = useState<number | undefined>(prefill?.max_tokens);
+  const [timeout, setTimeout] = useState<number | undefined>(prefill?.timeout);
+  const [epochs, setEpochs] = useState<number | undefined>(prefill?.epochs);
+  const [maxConnections, setMaxConnections] = useState<number | undefined>(prefill?.max_connections);
+
+  // Show advanced settings if any are prefilled
+  useEffect(() => {
+    if (prefill && (
+      prefill.temperature !== undefined ||
+      prefill.top_p !== undefined ||
+      prefill.max_tokens !== undefined ||
+      prefill.timeout !== undefined ||
+      prefill.epochs !== undefined ||
+      prefill.max_connections !== undefined
+    )) {
+      setShowAdvanced(true);
+    }
+  }, [prefill]);
 
   const selectedBenchmark = benchmarks.find((b) => b.name === benchmark);
 

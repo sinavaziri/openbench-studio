@@ -1,30 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, RunSummary } from '../api/client';
+import { api, RunFilters, RunSummary } from '../api/client';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
+
+const STATUS_OPTIONS = [
+  { value: '', label: 'All Statuses' },
+  { value: 'queued', label: 'Queued' },
+  { value: 'running', label: 'Running' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'canceled', label: 'Canceled' },
+];
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   
   // Compare mode state
   const [compareMode, setCompareMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadRuns();
-    
-    // Poll for updates every 3 seconds
-    const interval = setInterval(loadRuns, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadRuns = async () => {
+  const loadRuns = useCallback(async () => {
     try {
-      const data = await api.listRuns();
+      const filters: RunFilters = { limit: 100 };
+      if (searchQuery.trim()) filters.search = searchQuery.trim();
+      if (statusFilter) filters.status = statusFilter;
+      if (tagFilter) filters.tag = tagFilter;
+      
+      const data = await api.listRuns(filters);
       setRuns(data);
       setError(null);
     } catch (err) {
@@ -32,7 +45,25 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchQuery, statusFilter, tagFilter]);
+
+  const loadTags = useCallback(async () => {
+    try {
+      const tags = await api.listAllTags();
+      setAllTags(tags);
+    } catch {
+      // Ignore tag loading errors
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRuns();
+    loadTags();
+    
+    // Poll for updates every 3 seconds
+    const interval = setInterval(loadRuns, 3000);
+    return () => clearInterval(interval);
+  }, [loadRuns, loadTags]);
 
   const handleToggleCompareMode = () => {
     if (compareMode) {
@@ -115,10 +146,10 @@ export default function Dashboard() {
 
       {/* Runs Section */}
       <div>
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-6">
             <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
-              Recent Runs
+              Runs
             </p>
             
             {/* Compare Mode Toggle */}
@@ -157,6 +188,112 @@ export default function Dashboard() {
               New Run →
             </Link>
           </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="mb-6 space-y-4">
+          <div className="flex items-center gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search benchmarks and models..."
+                className="w-full px-4 py-2.5 pl-10 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[14px] placeholder-[#444] focus:border-[#333] focus:outline-none transition-colors"
+              />
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#444]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+
+            {/* Filter Toggle */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-4 py-2.5 text-[13px] border transition-colors ${
+                showFilters || statusFilter || tagFilter
+                  ? 'border-[#333] text-white bg-[#111]'
+                  : 'border-[#1a1a1a] text-[#666] hover:text-white hover:border-[#333]'
+              }`}
+            >
+              Filters
+              {(statusFilter || tagFilter) && (
+                <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-white text-black rounded-sm">
+                  {[statusFilter, tagFilter].filter(Boolean).length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Filter Dropdowns */}
+          {showFilters && (
+            <div className="flex items-center gap-4 pt-2">
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 8px center',
+                  backgroundSize: '16px',
+                }}
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Tag Filter */}
+              {allTags.length > 0 && (
+                <select
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 8px center',
+                    backgroundSize: '16px',
+                  }}
+                >
+                  <option value="">All Tags</option>
+                  {allTags.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {tag}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Clear Filters */}
+              {(statusFilter || tagFilter || searchQuery) && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('');
+                    setTagFilter('');
+                  }}
+                  className="px-3 py-2 text-[12px] text-[#666] hover:text-white transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
         </div>
         
         {/* Selection Info */}

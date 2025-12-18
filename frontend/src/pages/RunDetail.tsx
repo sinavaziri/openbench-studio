@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, RunDetail as RunDetailType, SSEProgressEvent } from '../api/client';
+import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import LogTail from '../components/LogTail';
 import MetricCards from '../components/MetricCards';
@@ -8,6 +9,8 @@ import BreakdownChart from '../components/BreakdownChart';
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [run, setRun] = useState<RunDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +20,15 @@ export default function RunDetail() {
   const [stderrLines, setStderrLines] = useState<string[]>([]);
   const [progress, setProgress] = useState<SSEProgressEvent | null>(null);
   const [isSSEConnected, setIsSSEConnected] = useState(false);
+  
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  
+  // Tags
+  const [editingTags, setEditingTags] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [savingTags, setSavingTags] = useState(false);
   
   // Refs to track SSE subscription
   const sseCleanup = useRef<(() => void) | null>(null);
@@ -141,6 +153,56 @@ export default function RunDetail() {
       loadRun();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to cancel run');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await api.deleteRun(id);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete run');
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleRunAgain = () => {
+    if (!run?.config) return;
+    // Navigate to new run page with config as state
+    navigate('/runs/new', { state: { prefill: run.config } });
+  };
+
+  const handleAddTag = async () => {
+    if (!id || !run || !newTag.trim()) return;
+    setSavingTags(true);
+    try {
+      const currentTags = run.tags || [];
+      const updatedTags = [...currentTags, newTag.trim()];
+      await api.updateRunTags(id, updatedTags);
+      setRun({ ...run, tags: updatedTags });
+      setNewTag('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add tag');
+    } finally {
+      setSavingTags(false);
+    }
+  };
+
+  const handleRemoveTag = async (tagToRemove: string) => {
+    if (!id || !run) return;
+    setSavingTags(true);
+    try {
+      const currentTags = run.tags || [];
+      const updatedTags = currentTags.filter((t) => t !== tagToRemove);
+      await api.updateRunTags(id, updatedTags);
+      setRun({ ...run, tags: updatedTags });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove tag');
+    } finally {
+      setSavingTags(false);
     }
   };
 
@@ -279,14 +341,60 @@ export default function RunDetail() {
             )}
           </div>
           
-          {isActive && (
-            <button
-              onClick={handleCancel}
-              className="mt-8 px-4 py-2 text-[13px] text-[#888] border border-[#333] hover:border-[#666] hover:text-white transition-colors"
-            >
-              Cancel Run
-            </button>
-          )}
+          {/* Action Buttons */}
+          <div className="mt-8 space-y-3">
+            {isActive && (
+              <button
+                onClick={handleCancel}
+                className="w-full px-4 py-2 text-[13px] text-[#888] border border-[#333] hover:border-[#666] hover:text-white transition-colors"
+              >
+                Cancel Run
+              </button>
+            )}
+            
+            {run.config && !isActive && (
+              <button
+                onClick={handleRunAgain}
+                className="w-full px-4 py-2 text-[13px] text-white bg-[#1a1a1a] border border-[#333] hover:bg-[#222] transition-colors"
+              >
+                Run Again →
+              </button>
+            )}
+            
+            {isAuthenticated && !isActive && (
+              <>
+                {!showDeleteConfirm ? (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full px-4 py-2 text-[13px] text-[#666] border border-[#222] hover:border-[#c44] hover:text-[#c44] transition-colors"
+                  >
+                    Delete Run
+                  </button>
+                ) : (
+                  <div className="p-3 bg-[#1a0a0a] border border-[#3a1a1a]">
+                    <p className="text-[12px] text-[#c44] mb-3">
+                      Delete this run and all artifacts?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        className="flex-1 px-3 py-1.5 text-[12px] text-white bg-[#c44] hover:bg-[#d55] disabled:opacity-50 transition-colors"
+                      >
+                        {deleting ? 'Deleting...' : 'Delete'}
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 px-3 py-1.5 text-[12px] text-[#888] border border-[#333] hover:text-white transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
         
         <div>
@@ -347,6 +455,81 @@ export default function RunDetail() {
               </pre>
             </div>
           )}
+
+          {/* Tags */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
+                Tags
+              </p>
+              {isAuthenticated && !editingTags && (
+                <button
+                  onClick={() => setEditingTags(true)}
+                  className="text-[11px] text-[#555] hover:text-white transition-colors"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            
+            <div className="flex flex-wrap gap-2">
+              {(run.tags || []).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#888] bg-[#111] border border-[#222]"
+                >
+                  {tag}
+                  {editingTags && (
+                    <button
+                      onClick={() => handleRemoveTag(tag)}
+                      disabled={savingTags}
+                      className="text-[#666] hover:text-[#c44] transition-colors disabled:opacity-50"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+              
+              {(run.tags || []).length === 0 && !editingTags && (
+                <span className="text-[13px] text-[#444]">No tags</span>
+              )}
+              
+              {editingTags && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTag();
+                      }
+                    }}
+                    placeholder="Add tag..."
+                    className="px-2 py-1 w-24 text-[12px] bg-[#0a0a0a] border border-[#222] text-white placeholder-[#444] focus:border-[#444] focus:outline-none"
+                  />
+                  <button
+                    onClick={handleAddTag}
+                    disabled={!newTag.trim() || savingTags}
+                    className="px-2 py-1 text-[11px] text-white bg-[#222] hover:bg-[#333] disabled:opacity-50 transition-colors"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingTags(false);
+                      setNewTag('');
+                    }}
+                    className="px-2 py-1 text-[11px] text-[#666] hover:text-white transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

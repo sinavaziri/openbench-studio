@@ -59,6 +59,7 @@ async def init_db():
             "ALTER TABLE runs ADD COLUMN primary_metric REAL",
             "ALTER TABLE runs ADD COLUMN primary_metric_name TEXT",
             "ALTER TABLE runs ADD COLUMN user_id TEXT",
+            "ALTER TABLE runs ADD COLUMN tags_json TEXT DEFAULT '[]'",
         ]
         
         for migration in migrations:

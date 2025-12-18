@@ -96,6 +96,15 @@ export interface RunSummary {
   finished_at?: string;
   primary_metric?: number;
   primary_metric_name?: string;
+  tags: string[];
+}
+
+export interface RunFilters {
+  limit?: number;
+  search?: string;
+  status?: string;
+  benchmark?: string;
+  tag?: string;
 }
 
 // Structured summary types
@@ -139,6 +148,7 @@ export interface RunDetail extends RunSummary {
   stdout_tail?: string;
   stderr_tail?: string;
   summary?: ResultSummary | null;  // Structured results summary
+  tags: string[];  // User-defined tags for organization
 }
 
 // SSE Event Types
@@ -341,8 +351,15 @@ class ApiClient {
     }, true);  // Requires auth
   }
 
-  async listRuns(limit: number = 50): Promise<RunSummary[]> {
-    return this.request(`/runs?limit=${limit}`);
+  async listRuns(filters: RunFilters = {}): Promise<RunSummary[]> {
+    const params = new URLSearchParams();
+    if (filters.limit) params.set('limit', filters.limit.toString());
+    if (filters.search) params.set('search', filters.search);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.benchmark) params.set('benchmark', filters.benchmark);
+    if (filters.tag) params.set('tag', filters.tag);
+    const query = params.toString();
+    return this.request(`/runs${query ? `?${query}` : ''}`);
   }
 
   async getRun(runId: string, logLines: number = 100): Promise<RunDetail> {
@@ -353,6 +370,23 @@ class ApiClient {
     return this.request(`/runs/${runId}/cancel`, {
       method: 'POST',
     }, true);  // Requires auth
+  }
+
+  async deleteRun(runId: string): Promise<{ status: string }> {
+    return this.request(`/runs/${runId}`, {
+      method: 'DELETE',
+    }, true);  // Requires auth
+  }
+
+  async updateRunTags(runId: string, tags: string[]): Promise<{ tags: string[] }> {
+    return this.request(`/runs/${runId}/tags`, {
+      method: 'PATCH',
+      body: JSON.stringify({ tags }),
+    }, true);  // Requires auth
+  }
+
+  async listAllTags(): Promise<string[]> {
+    return this.request('/runs/tags');
   }
 
   /**

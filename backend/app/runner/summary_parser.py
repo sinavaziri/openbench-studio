@@ -308,3 +308,5 @@ def parse_and_write_summary(artifact_dir: Path) -> Summary:
     write_summary(artifact_dir, summary)
     return summary
 
+
+
