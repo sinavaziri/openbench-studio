@@ -94,6 +94,7 @@ export interface Benchmark {
   description?: string;  // Full description for detail view
   tags: string[];
   featured?: boolean;  // Whether this is a featured/popular benchmark
+  source?: string;  // Source of benchmark: "builtin", "plugin", "github", "cli"
 }
 
 export interface RunConfig {
@@ -357,6 +358,10 @@ class ApiClient {
 
   async healthCheck(): Promise<{ status: string }> {
     return this.request('/health');
+  }
+
+  async getVersion(): Promise<{ web_ui: string; openbench: string | null; openbench_available: boolean }> {
+    return this.request('/version');
   }
 
   async listBenchmarks(): Promise<Benchmark[]> {

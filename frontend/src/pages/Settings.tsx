@@ -159,6 +159,7 @@ export default function Settings() {
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [newProvider, setNewProvider] = useState<{ id: string; displayName: string; envVar: string; color: string; customEnvVar?: string } | null>(null);
+  const [versionInfo, setVersionInfo] = useState<{ web_ui: string; openbench: string | null; openbench_available: boolean } | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -170,8 +171,14 @@ export default function Settings() {
 
   const loadData = async () => {
     try {
-      const keysData = await api.listApiKeys();
+      const [keysData, version] = await Promise.all([
+        api.listApiKeys(),
+        api.getVersion().catch(() => null),
+      ]);
       setApiKeys(keysData);
+      if (version) {
+        setVersionInfo(version);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -308,6 +315,41 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Version Information */}
+      {versionInfo && (
+        <div className="mb-12">
+          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+            Version Information
+          </p>
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-6">
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-[12px] text-[#555] mb-1">Web UI</p>
+                <p className="text-[14px] text-white font-mono">{versionInfo.web_ui}</p>
+              </div>
+              <div>
+                <p className="text-[12px] text-[#555] mb-1">OpenBench CLI</p>
+                {versionInfo.openbench_available ? (
+                  <p className="text-[14px] text-white font-mono">{versionInfo.openbench}</p>
+                ) : (
+                  <p className="text-[14px] text-[#888]">Not installed</p>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-[#1a1a1a]">
+              <a
+                href="https://github.com/groq/openbench"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[12px] text-[#666] hover:text-white transition-colors inline-flex items-center gap-1"
+              >
+                View OpenBench on GitHub →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* API Keys Section */}
       <div>
