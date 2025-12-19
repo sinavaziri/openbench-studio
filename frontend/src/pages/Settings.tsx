@@ -1,37 +1,27 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, ApiKeyPublic, ApiKeyProvider, ProviderInfo } from '../api/client';
+import { api, ApiKeyPublic, ApiKeyProvider } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
-
-// Provider display info with icons/colors
-const PROVIDER_DISPLAY: Record<string, { name: string; color: string }> = {
-  openai: { name: 'OpenAI', color: '#10a37f' },
-  anthropic: { name: 'Anthropic', color: '#d97706' },
-  google: { name: 'Google AI', color: '#4285f4' },
-  mistral: { name: 'Mistral', color: '#ff7000' },
-  cohere: { name: 'Cohere', color: '#7c3aed' },
-  together: { name: 'Together AI', color: '#3b82f6' },
-  groq: { name: 'Groq', color: '#f97316' },
-  fireworks: { name: 'Fireworks', color: '#ef4444' },
-  openrouter: { name: 'OpenRouter', color: '#6366f1' },
-  custom: { name: 'Custom', color: '#6b7280' },
-};
+import ProviderSelector from '../components/ProviderSelector';
+import { getProviderDisplay, ProviderDefinition } from '../data/providers';
 
 interface ProviderCardProps {
-  provider: ProviderInfo;
+  providerId: string;
+  displayName: string;
+  envVar: string;
+  color: string;
   existingKey?: ApiKeyPublic;
-  onSave: (provider: ApiKeyProvider, key: string) => Promise<void>;
+  onSave: (provider: ApiKeyProvider, key: string, customEnvVar?: string) => Promise<void>;
   onDelete: (provider: ApiKeyProvider) => Promise<void>;
+  autoEdit?: boolean;
 }
 
-function ProviderCard({ provider, existingKey, onSave, onDelete }: ProviderCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
+function ProviderCard({ providerId, displayName, envVar, color, existingKey, onSave, onDelete, autoEdit = false }: ProviderCardProps) {
+  const [isEditing, setIsEditing] = useState(autoEdit);
   const [keyValue, setKeyValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  const display = PROVIDER_DISPLAY[provider.provider] || { name: provider.display_name, color: '#6b7280' };
 
   const handleSave = async () => {
     if (!keyValue.trim()) {
@@ -43,7 +33,9 @@ function ProviderCard({ provider, existingKey, onSave, onDelete }: ProviderCardP
     setError(null);
     
     try {
-      await onSave(provider.provider, keyValue);
+      // For custom providers, pass the custom env var
+      const customEnvVar = existingKey?.custom_env_var || undefined;
+      await onSave(providerId, keyValue, customEnvVar);
       setKeyValue('');
       setIsEditing(false);
     } catch (err) {
@@ -58,7 +50,7 @@ function ProviderCard({ provider, existingKey, onSave, onDelete }: ProviderCardP
     setError(null);
     
     try {
-      await onDelete(provider.provider);
+      await onDelete(providerId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete API key');
     } finally {
@@ -72,11 +64,11 @@ function ProviderCard({ provider, existingKey, onSave, onDelete }: ProviderCardP
         <div className="flex items-center gap-3">
           <div 
             className="w-2 h-8 rounded-full"
-            style={{ backgroundColor: display.color }}
+            style={{ backgroundColor: color }}
           />
           <div>
-            <h3 className="text-[15px] text-white">{display.name}</h3>
-            <p className="text-[12px] text-[#555] font-mono">{provider.env_var}</p>
+            <h3 className="text-[15px] text-white">{displayName}</h3>
+            <p className="text-[12px] text-[#555] font-mono">{envVar}</p>
           </div>
         </div>
         
@@ -161,10 +153,12 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [showProviderSelector, setShowProviderSelector] = useState(false);
+  const [newProvider, setNewProvider] = useState<{ id: string; displayName: string; envVar: string; color: string; customEnvVar?: string } | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -176,11 +170,7 @@ export default function Settings() {
 
   const loadData = async () => {
     try {
-      const [providersData, keysData] = await Promise.all([
-        api.listProviders(),
-        api.listApiKeys(),
-      ]);
-      setProviders(providersData);
+      const keysData = await api.listApiKeys();
       setApiKeys(keysData);
       setError(null);
     } catch (err) {
@@ -190,23 +180,71 @@ export default function Settings() {
     }
   };
 
-  const handleSaveKey = async (provider: ApiKeyProvider, key: string) => {
-    await api.createOrUpdateApiKey({ provider, key });
+  const handleSaveKey = async (provider: ApiKeyProvider, key: string, customEnvVar?: string) => {
+    await api.createOrUpdateApiKey({ provider, key, custom_env_var: customEnvVar });
+    
+    // Clear the new provider state after successful save
+    if (newProvider && newProvider.id === provider) {
+      setNewProvider(null);
+    }
+    
     await loadData();
+    // Refresh available models after key change
+    await refreshModels();
+    // Notify other components that models have been updated
+    window.dispatchEvent(new CustomEvent('modelsUpdated'));
   };
 
   const handleDeleteKey = async (provider: ApiKeyProvider) => {
     await api.deleteApiKey(provider);
     await loadData();
+    // Refresh available models after key change
+    await refreshModels();
+    // Notify other components that models have been updated
+    window.dispatchEvent(new CustomEvent('modelsUpdated'));
+  };
+
+  const handleProviderSelect = (provider: ProviderDefinition | { id: string; displayName: string; envVar: string; color: string; isCustom: true }) => {
+    setShowProviderSelector(false);
+    
+    // Set up the new provider for editing
+    if ('isCustom' in provider && provider.isCustom) {
+      setNewProvider({
+        id: provider.id,
+        displayName: provider.displayName,
+        envVar: provider.envVar,
+        color: provider.color,
+        customEnvVar: provider.envVar,
+      });
+    } else {
+      setNewProvider({
+        id: provider.id,
+        displayName: provider.displayName,
+        envVar: provider.envVar,
+        color: provider.color,
+      });
+    }
+  };
+
+  const handleCancelNewProvider = () => {
+    setNewProvider(null);
+  };
+
+  const refreshModels = async () => {
+    setRefreshingModels(true);
+    try {
+      // Force refresh the models cache
+      await api.getAvailableModels(true);
+    } catch (err) {
+      console.error('Failed to refresh models:', err);
+    } finally {
+      setRefreshingModels(false);
+    }
   };
 
   const handleLogout = () => {
     logout();
     navigate('/');
-  };
-
-  const getKeyForProvider = (provider: ApiKeyProvider): ApiKeyPublic | undefined => {
-    return apiKeys.find((k) => k.provider === provider);
   };
 
   if (loading) {
@@ -277,9 +315,16 @@ export default function Settings() {
           <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
             API Keys
           </p>
-          <p className="text-[12px] text-[#555]">
-            {apiKeys.length} of {providers.length} configured
-          </p>
+          <div className="flex items-center gap-4">
+            {refreshingModels && (
+              <span className="text-[12px] text-[#888]">
+                Refreshing available models...
+              </span>
+            )}
+            <p className="text-[12px] text-[#555]">
+              {apiKeys.length} configured
+            </p>
+          </div>
         </div>
         
         <p className="text-[13px] text-[#555] mb-6 max-w-2xl">
@@ -287,17 +332,63 @@ export default function Settings() {
           Keys are encrypted at rest and never exposed in logs or artifacts.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {providers.map((provider) => (
-            <ProviderCard
-              key={provider.provider}
-              provider={provider}
-              existingKey={getKeyForProvider(provider.provider)}
-              onSave={handleSaveKey}
-              onDelete={handleDeleteKey}
-            />
-          ))}
-        </div>
+        {/* Grid of configured API keys */}
+        {(apiKeys.length > 0 || newProvider) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {apiKeys.map((key) => {
+              const display = getProviderDisplay(key.provider);
+              return (
+                <ProviderCard
+                  key={key.key_id}
+                  providerId={key.provider}
+                  displayName={display.name}
+                  envVar={key.custom_env_var || display.envVar}
+                  color={display.color}
+                  existingKey={key}
+                  onSave={handleSaveKey}
+                  onDelete={handleDeleteKey}
+                />
+              );
+            })}
+            
+            {/* New provider being added */}
+            {newProvider && (
+              <ProviderCard
+                key={`new-${newProvider.id}`}
+                providerId={newProvider.id}
+                displayName={newProvider.displayName}
+                envVar={newProvider.envVar}
+                color={newProvider.color}
+                onSave={async (provider, key) => {
+                  await handleSaveKey(provider, key, newProvider.customEnvVar);
+                }}
+                onDelete={async () => {
+                  handleCancelNewProvider();
+                }}
+                autoEdit={true}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Provider Selector or Add Another button */}
+        {showProviderSelector ? (
+          <ProviderSelector
+            configuredProviders={apiKeys.map(k => k.provider)}
+            onSelect={handleProviderSelect}
+            onCancel={() => setShowProviderSelector(false)}
+          />
+        ) : (
+          !newProvider && (
+            <button
+              onClick={() => setShowProviderSelector(true)}
+              className="w-full md:w-auto px-4 py-2.5 text-[13px] text-[#888] border border-[#333] hover:border-[#555] hover:text-white transition-colors flex items-center gap-2"
+            >
+              <span className="text-[16px]">+</span>
+              Add Another
+            </button>
+          )
+        )}
       </div>
     </Layout>
   );

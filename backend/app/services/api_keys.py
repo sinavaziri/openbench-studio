@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from app.core.config import ENCRYPTION_KEY
-from app.db.models import ApiKey, ApiKeyCreate, ApiKeyProvider, ApiKeyPublic, PROVIDER_ENV_VARS
+from app.db.models import ApiKey, ApiKeyCreate, ApiKeyPublic, get_env_var_for_provider
 from app.db.session import get_db
 
 
@@ -64,7 +64,7 @@ class ApiKeyService:
             # Check if key exists for this user/provider
             cursor = await db.execute(
                 "SELECT key_id FROM api_keys WHERE user_id = ? AND provider = ?",
-                (user_id, key_create.provider.value),
+                (user_id, key_create.provider),
             )
             existing = await cursor.fetchone()
 
@@ -73,10 +73,10 @@ class ApiKeyService:
                 await db.execute(
                     """
                     UPDATE api_keys 
-                    SET encrypted_key = ?, key_preview = ?, updated_at = ?
+                    SET encrypted_key = ?, key_preview = ?, custom_env_var = ?, updated_at = ?
                     WHERE user_id = ? AND provider = ?
                     """,
-                    (encrypted, preview, now.isoformat(), user_id, key_create.provider.value),
+                    (encrypted, preview, key_create.custom_env_var, now.isoformat(), user_id, key_create.provider),
                 )
                 key_id = existing["key_id"]
             else:
@@ -86,21 +86,23 @@ class ApiKeyService:
                     provider=key_create.provider,
                     encrypted_key=encrypted,
                     key_preview=preview,
+                    custom_env_var=key_create.custom_env_var,
                     created_at=now,
                     updated_at=now,
                 )
                 await db.execute(
                     """
                     INSERT INTO api_keys 
-                    (key_id, user_id, provider, encrypted_key, key_preview, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (key_id, user_id, provider, encrypted_key, key_preview, custom_env_var, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         key.key_id,
                         key.user_id,
-                        key.provider.value,
+                        key.provider,
                         key.encrypted_key,
                         key.key_preview,
+                        key.custom_env_var,
                         key.created_at.isoformat(),
                         key.updated_at.isoformat(),
                     ),
@@ -126,24 +128,24 @@ class ApiKeyService:
             rows = await cursor.fetchall()
             return [self._row_to_public(row) for row in rows]
 
-    async def get_key(self, user_id: str, provider: ApiKeyProvider) -> Optional[ApiKey]:
+    async def get_key(self, user_id: str, provider: str) -> Optional[ApiKey]:
         """Get a full API key (including decrypted value) for a user and provider."""
         async with get_db() as db:
             cursor = await db.execute(
                 "SELECT * FROM api_keys WHERE user_id = ? AND provider = ?",
-                (user_id, provider.value),
+                (user_id, provider),
             )
             row = await cursor.fetchone()
             if row is None:
                 return None
             return self._row_to_key(row)
 
-    async def delete_key(self, user_id: str, provider: ApiKeyProvider) -> bool:
+    async def delete_key(self, user_id: str, provider: str) -> bool:
         """Delete an API key. Returns True if deleted, False if not found."""
         async with get_db() as db:
             cursor = await db.execute(
                 "DELETE FROM api_keys WHERE user_id = ? AND provider = ?",
-                (user_id, provider.value),
+                (user_id, provider),
             )
             await db.commit()
             return cursor.rowcount > 0
@@ -156,42 +158,52 @@ class ApiKeyService:
         """
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT provider, encrypted_key FROM api_keys WHERE user_id = ?",
+                "SELECT provider, encrypted_key, custom_env_var FROM api_keys WHERE user_id = ?",
                 (user_id,),
             )
             rows = await cursor.fetchall()
             
             env_vars = {}
             for row in rows:
-                provider = ApiKeyProvider(row["provider"])
-                env_var_name = PROVIDER_ENV_VARS.get(provider)
-                if env_var_name:
-                    try:
-                        decrypted = decrypt_api_key(row["encrypted_key"])
-                        env_vars[env_var_name] = decrypted
-                    except Exception:
-                        pass  # Skip keys that fail to decrypt
+                provider = row["provider"]
+                # Check if custom_env_var column exists (for migration compatibility)
+                custom_env_var = row["custom_env_var"] if "custom_env_var" in row.keys() else None
+                env_var_name = get_env_var_for_provider(provider, custom_env_var)
+                
+                try:
+                    decrypted = decrypt_api_key(row["encrypted_key"])
+                    env_vars[env_var_name] = decrypted
+                except Exception:
+                    pass  # Skip keys that fail to decrypt
             
             return env_vars
 
     def _row_to_key(self, row) -> ApiKey:
         """Convert a database row to an ApiKey model."""
+        # Check if custom_env_var column exists (for migration compatibility)
+        custom_env_var = row["custom_env_var"] if "custom_env_var" in row.keys() else None
+        
         return ApiKey(
             key_id=row["key_id"],
             user_id=row["user_id"],
-            provider=ApiKeyProvider(row["provider"]),
+            provider=row["provider"],
             encrypted_key=row["encrypted_key"],
             key_preview=row["key_preview"],
+            custom_env_var=custom_env_var,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
     def _row_to_public(self, row) -> ApiKeyPublic:
         """Convert a database row to an ApiKeyPublic model."""
+        # Check if custom_env_var column exists (for migration compatibility)
+        custom_env_var = row["custom_env_var"] if "custom_env_var" in row.keys() else None
+        
         return ApiKeyPublic(
             key_id=row["key_id"],
-            provider=ApiKeyProvider(row["provider"]),
+            provider=row["provider"],
             key_preview=row["key_preview"],
+            custom_env_var=custom_env_var,
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )

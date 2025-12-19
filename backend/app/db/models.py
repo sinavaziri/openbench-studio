@@ -54,56 +54,94 @@ class TokenData(BaseModel):
 # API Key Models
 # =============================================================================
 
-class ApiKeyProvider(str, Enum):
-    """Supported API key providers."""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    GOOGLE = "google"
-    MISTRAL = "mistral"
-    COHERE = "cohere"
-    TOGETHER = "together"
-    GROQ = "groq"
-    FIREWORKS = "fireworks"
-    OPENROUTER = "openrouter"
-    CUSTOM = "custom"
+# Provider ID type (string for dynamic providers)
+ApiKeyProvider = str
 
-
-# Map providers to environment variable names
-PROVIDER_ENV_VARS = {
-    ApiKeyProvider.OPENAI: "OPENAI_API_KEY",
-    ApiKeyProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
-    ApiKeyProvider.GOOGLE: "GOOGLE_API_KEY",
-    ApiKeyProvider.MISTRAL: "MISTRAL_API_KEY",
-    ApiKeyProvider.COHERE: "COHERE_API_KEY",
-    ApiKeyProvider.TOGETHER: "TOGETHER_API_KEY",
-    ApiKeyProvider.GROQ: "GROQ_API_KEY",
-    ApiKeyProvider.FIREWORKS: "FIREWORKS_API_KEY",
-    ApiKeyProvider.OPENROUTER: "OPENROUTER_API_KEY",
+# Comprehensive list of pre-defined providers from openbench.dev
+PREDEFINED_PROVIDERS = {
+    "ai21": {"display_name": "AI21 Labs", "env_var": "AI21_API_KEY", "color": "#6b7280"},
+    "anthropic": {"display_name": "Anthropic", "env_var": "ANTHROPIC_API_KEY", "color": "#d97706"},
+    "bedrock": {"display_name": "AWS Bedrock", "env_var": "AWS_ACCESS_KEY_ID", "color": "#ff9900"},
+    "azure": {"display_name": "Azure OpenAI", "env_var": "AZURE_OPENAI_API_KEY", "color": "#0078d4"},
+    "baseten": {"display_name": "Baseten", "env_var": "BASETEN_API_KEY", "color": "#6b7280"},
+    "cerebras": {"display_name": "Cerebras", "env_var": "CEREBRAS_API_KEY", "color": "#6366f1"},
+    "cohere": {"display_name": "Cohere", "env_var": "COHERE_API_KEY", "color": "#7c3aed"},
+    "crusoe": {"display_name": "Crusoe", "env_var": "CRUSOE_API_KEY", "color": "#6b7280"},
+    "deepinfra": {"display_name": "DeepInfra", "env_var": "DEEPINFRA_API_KEY", "color": "#6b7280"},
+    "friendli": {"display_name": "Friendli", "env_var": "FRIENDLI_TOKEN", "color": "#6b7280"},
+    "google": {"display_name": "Google AI", "env_var": "GOOGLE_API_KEY", "color": "#4285f4"},
+    "groq": {"display_name": "Groq", "env_var": "GROQ_API_KEY", "color": "#f97316"},
+    "huggingface": {"display_name": "Hugging Face", "env_var": "HF_TOKEN", "color": "#fbbf24"},
+    "hyperbolic": {"display_name": "Hyperbolic", "env_var": "HYPERBOLIC_API_KEY", "color": "#6b7280"},
+    "lambda": {"display_name": "Lambda", "env_var": "LAMBDA_API_KEY", "color": "#6b7280"},
+    "minimax": {"display_name": "MiniMax", "env_var": "MINIMAX_API_KEY", "color": "#6b7280"},
+    "mistral": {"display_name": "Mistral", "env_var": "MISTRAL_API_KEY", "color": "#ff7000"},
+    "moonshot": {"display_name": "Moonshot", "env_var": "MOONSHOT_API_KEY", "color": "#6b7280"},
+    "nebius": {"display_name": "Nebius", "env_var": "NEBIUS_API_KEY", "color": "#6b7280"},
+    "nous": {"display_name": "Nous Research", "env_var": "NOUS_API_KEY", "color": "#6b7280"},
+    "novita": {"display_name": "Novita AI", "env_var": "NOVITA_API_KEY", "color": "#6b7280"},
+    "ollama": {"display_name": "Ollama", "env_var": "OLLAMA_HOST", "color": "#6b7280"},
+    "openai": {"display_name": "OpenAI", "env_var": "OPENAI_API_KEY", "color": "#10a37f"},
+    "openrouter": {"display_name": "OpenRouter", "env_var": "OPENROUTER_API_KEY", "color": "#6366f1"},
+    "parasail": {"display_name": "Parasail", "env_var": "PARASAIL_API_KEY", "color": "#6b7280"},
+    "perplexity": {"display_name": "Perplexity", "env_var": "PERPLEXITY_API_KEY", "color": "#6b7280"},
+    "reka": {"display_name": "Reka", "env_var": "REKA_API_KEY", "color": "#6b7280"},
+    "sambanova": {"display_name": "SambaNova", "env_var": "SAMBANOVA_API_KEY", "color": "#6b7280"},
+    "siliconflow": {"display_name": "SiliconFlow", "env_var": "SILICONFLOW_API_KEY", "color": "#6b7280"},
+    "together": {"display_name": "Together AI", "env_var": "TOGETHER_API_KEY", "color": "#3b82f6"},
+    "vercel": {"display_name": "Vercel AI Gateway", "env_var": "AI_GATEWAY_API_KEY", "color": "#000000"},
+    "wandb": {"display_name": "W&B Inference", "env_var": "WANDB_API_KEY", "color": "#fbbf24"},
+    "vllm": {"display_name": "vLLM", "env_var": "VLLM_API_KEY", "color": "#6b7280"},
+    "fireworks": {"display_name": "Fireworks", "env_var": "FIREWORKS_API_KEY", "color": "#ef4444"},
 }
+
+
+def get_env_var_for_provider(provider: str, custom_env_var: Optional[str] = None) -> str:
+    """
+    Get the environment variable name for a provider.
+    
+    Args:
+        provider: The provider ID (e.g., 'openai', 'anthropic')
+        custom_env_var: Optional custom environment variable name
+        
+    Returns:
+        The environment variable name to use
+    """
+    if custom_env_var:
+        return custom_env_var
+    
+    if provider in PREDEFINED_PROVIDERS:
+        return PREDEFINED_PROVIDERS[provider]["env_var"]
+    
+    # For custom providers, generate env var name from provider ID
+    return f"{provider.upper().replace('-', '_').replace(' ', '_')}_API_KEY"
 
 
 class ApiKey(BaseModel):
     """An API key for a provider."""
     key_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
-    provider: ApiKeyProvider
+    provider: str  # Dynamic provider ID
     encrypted_key: str  # AES encrypted
     key_preview: str  # Last 4 characters for display
+    custom_env_var: Optional[str] = None  # Optional custom env var name
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ApiKeyCreate(BaseModel):
     """Request body for creating an API key."""
-    provider: ApiKeyProvider
+    provider: str = Field(min_length=1, max_length=100)
     key: str = Field(min_length=1)
+    custom_env_var: Optional[str] = Field(None, max_length=100)
 
 
 class ApiKeyPublic(BaseModel):
     """Public API key info (no actual key)."""
     key_id: str
-    provider: ApiKeyProvider
+    provider: str
     key_preview: str
+    custom_env_var: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

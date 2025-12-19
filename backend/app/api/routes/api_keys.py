@@ -5,8 +5,9 @@ API Keys routes for managing provider API keys.
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import get_current_user
-from app.db.models import ApiKeyCreate, ApiKeyProvider, ApiKeyPublic, User, PROVIDER_ENV_VARS
+from app.db.models import ApiKeyCreate, ApiKeyPublic, User, PREDEFINED_PROVIDERS
 from app.services.api_keys import api_key_service
+from app.services.model_discovery import model_discovery_service
 
 router = APIRouter()
 
@@ -38,7 +39,7 @@ async def create_or_update_api_key(
 
 @router.delete("/api-keys/{provider}")
 async def delete_api_key(
-    provider: ApiKeyProvider,
+    provider: str,
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -48,7 +49,7 @@ async def delete_api_key(
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No API key found for provider: {provider.value}",
+            detail=f"No API key found for provider: {provider}",
         )
     return {"status": "deleted"}
 
@@ -56,16 +57,46 @@ async def delete_api_key(
 @router.get("/api-keys/providers")
 async def list_providers():
     """
-    List all supported API key providers with their environment variable names.
+    List all supported API key providers with their environment variable names and metadata.
+    
+    Returns all 30+ pre-defined providers from openbench.dev.
     """
     return [
         {
-            "provider": provider.value,
-            "env_var": env_var,
-            "display_name": provider.value.replace("_", " ").title(),
+            "provider": provider_id,
+            "env_var": info["env_var"],
+            "display_name": info["display_name"],
+            "color": info["color"],
         }
-        for provider, env_var in PROVIDER_ENV_VARS.items()
+        for provider_id, info in PREDEFINED_PROVIDERS.items()
     ]
+
+
+@router.get("/available-models")
+async def get_available_models(
+    force_refresh: bool = False,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get all available models for the current user based on their API keys.
+    
+    This endpoint dynamically fetches models from each provider's API using
+    the user's stored API keys. Results are cached for 1 hour to minimize
+    API calls.
+    
+    Args:
+        force_refresh: If True, bypass cache and fetch fresh data
+        current_user: The authenticated user
+        
+    Returns:
+        List of providers with their available models
+    """
+    providers = await model_discovery_service.get_available_models(
+        current_user.user_id,
+        force_refresh=force_refresh
+    )
+    
+    return {"providers": [p.dict() for p in providers]}
 
 
 

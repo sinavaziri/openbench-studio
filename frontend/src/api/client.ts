@@ -31,35 +31,56 @@ export interface RegisterCredentials {
 // API Key Types
 // =============================================================================
 
-export type ApiKeyProvider = 
-  | 'openai' 
-  | 'anthropic' 
-  | 'google' 
-  | 'mistral' 
-  | 'cohere' 
-  | 'together' 
-  | 'groq' 
-  | 'fireworks'
-  | 'openrouter'
-  | 'custom';
+// Dynamic provider type (string for flexibility)
+export type ApiKeyProvider = string;
 
 export interface ApiKeyPublic {
   key_id: string;
-  provider: ApiKeyProvider;
+  provider: string;
   key_preview: string;
+  custom_env_var?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface ApiKeyCreate {
-  provider: ApiKeyProvider;
+  provider: string;
   key: string;
+  custom_env_var?: string;
 }
 
 export interface ProviderInfo {
-  provider: ApiKeyProvider;
+  provider: string;
   env_var: string;
   display_name: string;
+  color: string;
+}
+
+export interface ProviderDefinition {
+  id: string;
+  displayName: string;
+  envVar: string;
+  color: string;
+}
+
+// =============================================================================
+// Model Discovery Types
+// =============================================================================
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface ModelProvider {
+  name: string;
+  provider_key: string;
+  models: ModelInfo[];
+}
+
+export interface AvailableModelsResponse {
+  providers: ModelProvider[];
 }
 
 // =============================================================================
@@ -323,6 +344,11 @@ class ApiClient {
 
   async listProviders(): Promise<ProviderInfo[]> {
     return this.request<ProviderInfo[]>('/api-keys/providers');
+  }
+
+  async getAvailableModels(forceRefresh: boolean = false): Promise<AvailableModelsResponse> {
+    const params = forceRefresh ? '?force_refresh=true' : '';
+    return this.request<AvailableModelsResponse>(`/available-models${params}`, {}, true);
   }
 
   // ===========================================================================

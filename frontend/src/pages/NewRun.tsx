@@ -34,6 +34,23 @@ export default function NewRun() {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
+  // Listen for model updates from Settings page
+  useEffect(() => {
+    const handleModelsUpdated = () => {
+      // Reload API keys when models are updated in Settings
+      // This will trigger RunForm to re-fetch models
+      if (isAuthenticated) {
+        loadData();
+      }
+    };
+
+    window.addEventListener('modelsUpdated', handleModelsUpdated);
+
+    return () => {
+      window.removeEventListener('modelsUpdated', handleModelsUpdated);
+    };
+  }, [isAuthenticated]);
+
   const loadData = async () => {
     try {
       const [benchmarksData, keysData] = await Promise.all([

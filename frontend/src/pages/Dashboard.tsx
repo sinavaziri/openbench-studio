@@ -17,6 +17,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
+  const [benchmarkFilter, setBenchmarkFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   
   // Compare mode state
@@ -36,6 +38,7 @@ export default function Dashboard() {
       if (searchQuery.trim()) filters.search = searchQuery.trim();
       if (statusFilter) filters.status = statusFilter;
       if (tagFilter) filters.tag = tagFilter;
+      if (benchmarkFilter) filters.benchmark = benchmarkFilter;
       
       const data = await api.listRuns(filters);
       setRuns(data);
@@ -45,7 +48,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter, tagFilter]);
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -56,14 +59,25 @@ export default function Dashboard() {
     }
   }, []);
 
+  const loadBenchmarks = useCallback(async () => {
+    try {
+      const benchmarks = await api.listBenchmarks();
+      const benchmarkNames = benchmarks.map(b => b.name);
+      setAllBenchmarks(benchmarkNames);
+    } catch {
+      // Ignore benchmark loading errors
+    }
+  }, []);
+
   useEffect(() => {
     loadRuns();
     loadTags();
+    loadBenchmarks();
     
     // Poll for updates every 3 seconds
     const interval = setInterval(loadRuns, 3000);
     return () => clearInterval(interval);
-  }, [loadRuns, loadTags]);
+  }, [loadRuns, loadTags, loadBenchmarks]);
 
   const handleToggleCompareMode = () => {
     if (compareMode) {
@@ -209,15 +223,15 @@ export default function Dashboard() {
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2.5 text-[13px] border transition-colors ${
-                showFilters || statusFilter || tagFilter
+                showFilters || statusFilter || tagFilter || benchmarkFilter
                   ? 'border-[#333] text-white bg-[#111]'
                   : 'border-[#1a1a1a] text-[#666] hover:text-white hover:border-[#333]'
               }`}
             >
               Filters
-              {(statusFilter || tagFilter) && (
+              {(statusFilter || tagFilter || benchmarkFilter) && (
                 <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-white text-black rounded-sm">
-                  {[statusFilter, tagFilter].filter(Boolean).length}
+                  {[statusFilter, tagFilter, benchmarkFilter].filter(Boolean).length}
                 </span>
               )}
             </button>
@@ -226,6 +240,28 @@ export default function Dashboard() {
           {/* Filter Dropdowns */}
           {showFilters && (
             <div className="flex items-center gap-4 pt-2">
+              {/* Benchmark Filter */}
+              {allBenchmarks.length > 0 && (
+                <select
+                  value={benchmarkFilter}
+                  onChange={(e) => setBenchmarkFilter(e.target.value)}
+                  className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: 'right 8px center',
+                    backgroundSize: '16px',
+                  }}
+                >
+                  <option value="">All Benchmarks</option>
+                  {allBenchmarks.map((benchmark) => (
+                    <option key={benchmark} value={benchmark}>
+                      {benchmark}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               {/* Status Filter */}
               <select
                 value={statusFilter}
@@ -268,12 +304,13 @@ export default function Dashboard() {
               )}
 
               {/* Clear Filters */}
-              {(statusFilter || tagFilter || searchQuery) && (
+              {(statusFilter || tagFilter || benchmarkFilter || searchQuery) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setStatusFilter('');
                     setTagFilter('');
+                    setBenchmarkFilter('');
                   }}
                   className="px-3 py-2 text-[12px] text-[#666] hover:text-white transition-colors"
                 >

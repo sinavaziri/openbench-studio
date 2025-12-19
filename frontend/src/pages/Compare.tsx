@@ -29,12 +29,12 @@ function truncateModel(model: string, maxLen: number = 24): string {
 // Generate distinct colors for runs
 function getRunColor(index: number): string {
   const colors = [
-    '#fff',      // white
-    '#a8a8a8',   // silver
-    '#6b6b6b',   // gray
     '#c9a227',   // gold
     '#8b9dc3',   // light blue-gray
     '#b4a7d6',   // lavender
+    '#a8a8a8',   // silver
+    '#6b6b6b',   // gray
+    '#e07c7c',   // coral
   ];
   return colors[index % colors.length];
 }
@@ -297,16 +297,15 @@ export default function Compare() {
                     </div>
                     <div className="flex-1 h-8 bg-[#111] rounded-sm overflow-hidden relative">
                       <div
-                        className="h-full transition-all duration-500 ease-out flex items-center"
+                        className="h-full transition-all duration-500 ease-out"
                         style={{
                           width: `${Math.max(percentage, 2)}%`,
                           backgroundColor: getRunColor(index),
                         }}
-                      >
-                        <span className="absolute right-3 text-[14px] text-white font-light tabular-nums">
-                          {formatValue(value)}
-                        </span>
-                      </div>
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-white font-light tabular-nums">
+                        {formatValue(value)}
+                      </span>
                     </div>
                   </div>
                 </div>
