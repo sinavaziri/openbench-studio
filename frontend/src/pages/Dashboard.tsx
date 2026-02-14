@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api, RunFilters, RunSummary } from '../api/client';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
@@ -111,22 +112,26 @@ export default function Dashboard() {
     try {
       const result = await api.bulkDeleteRuns(Array.from(selectedIds));
       
-      // Show summary
-      let message = `Deleted ${result.summary.deleted} run(s)`;
-      if (result.summary.running > 0) {
-        message += `\n${result.summary.running} run(s) are currently running and cannot be deleted.`;
-      }
-      if (result.summary.failed > 0 || result.summary.not_found > 0) {
-        message += `\nFailed to delete ${result.summary.failed + result.summary.not_found} run(s).`;
+      // Show appropriate toast based on results
+      if (result.summary.deleted > 0) {
+        toast.success(`Deleted ${result.summary.deleted} run${result.summary.deleted > 1 ? 's' : ''}`);
       }
       
-      alert(message);
+      if (result.summary.running > 0) {
+        toast.error(`${result.summary.running} run${result.summary.running > 1 ? 's are' : ' is'} still running`);
+      }
+      
+      if (result.summary.failed > 0 || result.summary.not_found > 0) {
+        const failCount = result.summary.failed + result.summary.not_found;
+        toast.error(`Failed to delete ${failCount} run${failCount > 1 ? 's' : ''}`);
+      }
       
       // Clear selection and reload
       setSelectedIds(new Set());
       await loadRuns();
     } catch (err) {
-      alert(`Failed to delete runs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Failed to delete runs: ${errorMsg}`);
     } finally {
       setIsDeleting(false);
     }

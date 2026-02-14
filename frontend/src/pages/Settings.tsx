@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api, ApiKeyPublic, ApiKeyProvider } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
@@ -26,6 +27,7 @@ function ProviderCard({ providerId, displayName, envVar, color, existingKey, onS
   const handleSave = async () => {
     if (!keyValue.trim()) {
       setError('API key is required');
+      toast.error('API key is required');
       return;
     }
     
@@ -39,7 +41,9 @@ function ProviderCard({ providerId, displayName, envVar, color, existingKey, onS
       setKeyValue('');
       setIsEditing(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save API key');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to save API key';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -52,7 +56,9 @@ function ProviderCard({ providerId, displayName, envVar, color, existingKey, onS
     try {
       await onDelete(providerId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete API key');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to delete API key';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -195,6 +201,11 @@ export default function Settings() {
       setNewProvider(null);
     }
     
+    const display = getProviderDisplay(provider);
+    toast.success(`API key saved: ${display.name}`, {
+      icon: '🔑',
+    });
+    
     await loadData();
     // Refresh available models after key change
     await refreshModels();
@@ -204,6 +215,10 @@ export default function Settings() {
 
   const handleDeleteKey = async (provider: ApiKeyProvider) => {
     await api.deleteApiKey(provider);
+    
+    const display = getProviderDisplay(provider);
+    toast.success(`API key deleted: ${display.name}`);
+    
     await loadData();
     // Refresh available models after key change
     await refreshModels();
@@ -242,8 +257,10 @@ export default function Settings() {
     try {
       // Force refresh the models cache
       await api.getAvailableModels(true);
+      toast.success('Models refreshed', { icon: '🔄' });
     } catch (err) {
       console.error('Failed to refresh models:', err);
+      toast.error('Failed to refresh models');
     } finally {
       setRefreshingModels(false);
     }
@@ -251,6 +268,7 @@ export default function Settings() {
 
   const handleLogout = () => {
     logout();
+    toast.success('Signed out successfully');
     navigate('/');
   };
 

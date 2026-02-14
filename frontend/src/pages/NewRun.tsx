@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api, ApiKeyPublic, Benchmark, RunConfig, ModelProvider } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
@@ -170,9 +171,14 @@ export default function NewRun() {
 
     try {
       const result = await api.createRun(config);
+      toast.success(`Run started: ${selectedBenchmark.name}`, {
+        icon: '🚀',
+      });
       navigate(`/runs/${result.run_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start run');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to start run';
+      setError(errorMsg);
+      toast.error(errorMsg);
       setSubmitting(false);
     }
   };

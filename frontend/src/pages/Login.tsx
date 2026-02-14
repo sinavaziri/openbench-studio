@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
@@ -18,17 +19,23 @@ export default function Login() {
     setError(null);
     
     if (!email || !password) {
-      setError('Email and password are required');
+      const errorMsg = 'Email and password are required';
+      setError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
     
     if (isRegister && password !== confirmPassword) {
-      setError('Passwords do not match');
+      const errorMsg = 'Passwords do not match';
+      setError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
     
     if (isRegister && password.length < 8) {
-      setError('Password must be at least 8 characters');
+      const errorMsg = 'Password must be at least 8 characters';
+      setError(errorMsg);
+      toast.error(errorMsg);
       return;
     }
     
@@ -37,12 +44,16 @@ export default function Login() {
     try {
       if (isRegister) {
         await register({ email, password });
+        toast.success('Account created successfully!', { icon: '🎉' });
       } else {
         await login({ email, password });
+        toast.success('Welcome back!');
       }
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
+      const errorMsg = err instanceof Error ? err.message : 'Authentication failed';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }

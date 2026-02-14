@@ -65,6 +65,96 @@ To restart after config changes:
 docker-compose -f docker-compose.dev.yml restart
 ```
 
+## Database Migrations
+
+OpenBench uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Migrations run automatically on application startup.
+
+### How It Works
+
+- **Automatic migrations**: The app runs pending migrations on startup
+- **Safe for existing databases**: Existing databases are detected and stamped without re-running migrations
+- **SQLite with batch mode**: Uses Alembic's batch mode to handle SQLite's limited ALTER TABLE support
+
+### Creating a New Migration
+
+When you modify the database schema in `backend/app/db/sa_models.py`:
+
+```bash
+cd backend
+
+# Auto-generate migration from model changes
+alembic revision --autogenerate -m "add user preferences table"
+
+# Or create an empty migration to fill in manually
+alembic revision -m "custom data migration"
+```
+
+The migration file is created in `backend/alembic/versions/`. Review and edit it before committing.
+
+### Migration Commands
+
+```bash
+cd backend
+
+# Check current database revision
+alembic current
+
+# Show migration history
+alembic history
+
+# Upgrade to latest
+alembic upgrade head
+
+# Upgrade one revision
+alembic upgrade +1
+
+# Downgrade one revision
+alembic downgrade -1
+
+# Show pending migrations
+alembic heads
+
+# Generate SQL without executing (for review)
+alembic upgrade head --sql
+```
+
+### Best Practices
+
+1. **Always review auto-generated migrations** - Alembic's autogenerate is helpful but not perfect
+2. **Test migrations locally** before deploying
+3. **Keep migrations small and focused** - one logical change per migration
+4. **Never edit applied migrations** - create new ones instead
+5. **Include downgrade logic** when possible
+
+### Schema Definition
+
+- **Pydantic models** (`app/db/models.py`): API validation and serialization
+- **SQLAlchemy models** (`app/db/sa_models.py`): Database schema for Alembic
+
+When changing the schema, update both files to keep them in sync.
+
+### Troubleshooting Migrations
+
+**Migration fails on existing database:**
+```bash
+# Mark the database as current without running migrations
+cd backend
+alembic stamp head
+```
+
+**Need to recreate from scratch:**
+```bash
+# Delete the database and let migrations recreate it
+rm data/openbench.db
+# Restart the app - migrations will create fresh tables
+```
+
+**Check what changes would be detected:**
+```bash
+cd backend
+alembic check
+```
+
 ## Production Mode
 
 For production deployment, use the standard docker-compose file:

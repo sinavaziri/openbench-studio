@@ -223,15 +223,18 @@ class BenchmarkCatalog:
         """
         Parse the output of `bench list`.
         
-        Expected format: 3-column table
-         benchmark_id        Display Name          Description...
-                                                   (continuation lines...)
+        Handles multiple output formats:
+        1. JSON array (ideal)
+        2. ASCII table with box-drawing characters
+        3. Plain text table
         
-        Or JSON format if available.
+        Expected table format:
+          benchmark_id        Display Name          Description...
+                                                    (continuation lines...)
         """
         benchmarks = []
         
-        # Try JSON parsing first
+        # Try JSON parsing first (most reliable)
         try:
             data = json.loads(output)
             if isinstance(data, list):
@@ -255,58 +258,71 @@ class BenchmarkCatalog:
             pass
         
         # Box drawing characters to skip
-        box_chars = {'─', '│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', 
-                    '╭', '╮', '╯', '╰', '═', '║', '╔', '╗', '╚', '╝', '━', '┃',
-                    '┏', '┓', '┗', '┛', '╒', '╓', '╕', '╖', '╘', '╙', '╛', '╜',
-                    '╞', '╟', '╡', '╢', '╤', '╥', '╧', '╨', '╪', '╫', '╬',
-                    '▀', '▄', '█', '▌', '▐', '░', '▒', '▓'}
+        box_chars = set('─│┌┐└┘├┤┬┴┼╭╮╯╰═║╔╗╚╝━┃┏┓┗┛╒╓╕╖╘╙╛╜╞╟╡╢╤╥╧╨╪╫╬▀▄█▌▐░▒▓')
         
-        # Parse table format - benchmark entries start with exactly one space
-        # Format: " benchmark_id        Display Name          Description..."
+        # Words that are commonly misidentified as benchmark IDs
+        # (e.g., continuation lines, section headers, common words)
+        invalid_names = {
+            'about', 'for', 'with', 'and', 'the', 'from', 'this', 'that',
+            'subsets', 'available', 'benchmarks', 'total', 'commands',
+            'reasoning', 'tasks', 'official', 'qualifying', 'exam',
+            'benchmark', 'description', 'name', 'category',
+            'benchmark_id', 'display_name',  # Column headers
+        }
+        
         import re
         
         for line in output.split("\n"):
+            stripped = line.strip()
+            
             # Skip empty lines
-            if not line.strip():
+            if not stripped:
                 continue
-                
-            # Skip lines that are mostly box drawing characters
-            if any(c in box_chars for c in line[:5]):
+            
+            # Skip lines containing box drawing characters anywhere
+            if any(c in box_chars for c in line):
                 continue
-                
-            # Skip header/section lines (e.g., "Available Benchmarks", "Core Benchmarks (57)")
-            if re.match(r'^\s*[A-Z][a-z]+.*Benchmark', line):
+            
+            # Skip header/section lines
+            if re.match(r'^[A-Z][a-z]+.*[Bb]enchmark', stripped):
                 continue
-            if line.strip().startswith('Total:') or line.strip().startswith('Commands:'):
+            if stripped.startswith('Total:') or stripped.startswith('Commands:'):
                 break
-                
-            # Benchmark lines start with exactly 1 space, then the benchmark ID
-            # ID is lowercase/numbers/underscores/hyphens, possibly ending with …
-            match = re.match(r'^ ([a-z0-9_-]+…?)\s+(.+)', line)
+            
+            # Match benchmark lines with flexible leading whitespace (0-3 spaces)
+            # Benchmark ID must:
+            # - Start with lowercase letter
+            # - Contain only lowercase, digits, underscores, hyphens
+            # - Be followed by whitespace and more content
+            # Pattern: optional leading spaces, then benchmark_id, then spaces, then rest
+            match = re.match(r'^\s{0,3}([a-z][a-z0-9_-]*)\s{2,}(.+)', line)
+            
             if match:
-                benchmark_id = match.group(1).rstrip('…')  # Remove trailing …
+                benchmark_id = match.group(1).rstrip('…')
                 rest_of_line = match.group(2).strip()
                 
-                # Parse the rest: Display Name and Description (both optional)
-                # Usually separated by multiple spaces, but display name can have spaces
-                # The description is typically after ~40+ characters from start
-                # For simplicity, we'll use the first portion as display name
-                parts = rest_of_line.split(None, 1)
-                display_name = parts[0] if parts else ""
-                description = parts[1] if len(parts) > 1 else ""
+                # Skip if this looks like a continuation line (starts with uppercase 
+                # continuation of a parenthetical, or common word)
+                if benchmark_id.lower() in invalid_names:
+                    continue
                 
-                # Validate benchmark ID
-                if len(benchmark_id) >= 3 and len(benchmark_id) <= 50:
-                    # Try to extract category from context (section headers)
-                    category = "general"
-                    
-                    benchmarks.append(Benchmark(
-                        name=benchmark_id,
-                        category=category,
-                        description_short=description[:200] if description else display_name,
-                        tags=[],
-                        source="cli",
-                    ))
+                # Validate benchmark ID length
+                if len(benchmark_id) < 3 or len(benchmark_id) > 50:
+                    continue
+                
+                # Parse the rest: typically "Display Name          Description"
+                # Use multiple spaces (2+) as delimiter
+                parts = re.split(r'\s{2,}', rest_of_line, maxsplit=1)
+                display_name = parts[0] if parts else ""
+                description = parts[1] if len(parts) > 1 else display_name
+                
+                benchmarks.append(Benchmark(
+                    name=benchmark_id,
+                    category="general",
+                    description_short=description[:200] if description else display_name,
+                    tags=[],
+                    source="cli",
+                ))
         
         return benchmarks
     

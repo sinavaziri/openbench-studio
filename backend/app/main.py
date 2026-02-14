@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,14 +6,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import api_keys, auth, benchmarks, health, runs
 from app.core.config import API_PREFIX
-from app.db.session import init_db
+from app.db.migrations import run_migrations
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Startup: initialize database
-    await init_db()
+    # Startup: run database migrations
+    logger.info("Running database migrations...")
+    run_migrations()
+    logger.info("Database migrations complete")
     yield
     # Shutdown: cleanup if needed
 

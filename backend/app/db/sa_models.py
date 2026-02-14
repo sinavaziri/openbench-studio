@@ -1,0 +1,87 @@
+"""
+SQLAlchemy ORM models for database schema.
+
+These models define the actual database schema and are used by Alembic
+for migrations. The Pydantic models in models.py are used for API
+validation and serialization.
+"""
+
+from datetime import datetime
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    Float,
+    Text,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+class Base(DeclarativeBase):
+    """Base class for all SQLAlchemy models."""
+    pass
+
+
+class User(Base):
+    """A user account."""
+    __tablename__ = "users"
+
+    user_id = Column(String, primary_key=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)  # ISO format string
+    is_active = Column(Integer, nullable=False, default=1)
+
+    # Relationships
+    api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
+    runs = relationship("Run", back_populates="user")
+
+
+class ApiKey(Base):
+    """An API key for a provider."""
+    __tablename__ = "api_keys"
+
+    key_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
+    provider = Column(String, nullable=False, index=True)
+    encrypted_key = Column(String, nullable=False)
+    key_preview = Column(String, nullable=False)
+    custom_env_var = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    # Constraints
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uix_user_provider"),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="api_keys")
+
+
+class Run(Base):
+    """A benchmark run."""
+    __tablename__ = "runs"
+
+    run_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=True, index=True)
+    benchmark = Column(String, nullable=False, index=True)
+    model = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, default="queued", index=True)
+    created_at = Column(String, nullable=False)
+    started_at = Column(String, nullable=True)
+    finished_at = Column(String, nullable=True)
+    artifact_dir = Column(String, nullable=True)
+    exit_code = Column(Integer, nullable=True)
+    error = Column(Text, nullable=True)
+    config_json = Column(Text, nullable=True)
+    primary_metric = Column(Float, nullable=True)
+    primary_metric_name = Column(String, nullable=True)
+    tags_json = Column(Text, nullable=True, default="[]")
+
+    # Relationships
+    user = relationship("User", back_populates="runs")

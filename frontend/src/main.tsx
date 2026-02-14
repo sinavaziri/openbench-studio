@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
 import NewRun from './pages/NewRun'
@@ -15,6 +16,39 @@ import './index.css'
 function RootLayout() {
   return (
     <AuthProvider>
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#111',
+            color: '#fff',
+            border: '1px solid #222',
+            borderRadius: '0',
+            padding: '12px 16px',
+            fontSize: '14px',
+            fontFamily: 'Inter, system-ui, sans-serif',
+          },
+          success: {
+            iconTheme: {
+              primary: '#4a4',
+              secondary: '#111',
+            },
+            style: {
+              borderColor: '#1a3a1a',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#c44',
+              secondary: '#111',
+            },
+            style: {
+              borderColor: '#3a1a1a',
+            },
+          },
+        }}
+      />
       <Outlet />
     </AuthProvider>
   )

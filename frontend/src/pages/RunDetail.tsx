@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api, RunDetail as RunDetailType, SSEProgressEvent } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
@@ -81,30 +82,53 @@ export default function RunDetail() {
         setProgress(event);
       },
       onCompleted: (event) => {
-        setRun((prev) => prev ? {
-          ...prev,
-          status: 'completed',
-          exit_code: event.exit_code,
-          finished_at: event.finished_at || undefined,
-        } : null);
+        setRun((prev) => {
+          if (prev) {
+            toast.success(`Run completed: ${prev.benchmark}`, {
+              icon: '✅',
+              duration: 5000,
+            });
+          }
+          return prev ? {
+            ...prev,
+            status: 'completed',
+            exit_code: event.exit_code,
+            finished_at: event.finished_at || undefined,
+          } : null;
+        });
         setIsSSEConnected(false);
       },
       onFailed: (event) => {
-        setRun((prev) => prev ? {
-          ...prev,
-          status: 'failed',
-          exit_code: event.exit_code,
-          error: event.error || undefined,
-          finished_at: event.finished_at || undefined,
-        } : null);
+        setRun((prev) => {
+          if (prev) {
+            toast.error(`Run failed: ${event.error || 'Unknown error'}`, {
+              duration: 6000,
+            });
+          }
+          return prev ? {
+            ...prev,
+            status: 'failed',
+            exit_code: event.exit_code,
+            error: event.error || undefined,
+            finished_at: event.finished_at || undefined,
+          } : null;
+        });
         setIsSSEConnected(false);
       },
       onCanceled: (event) => {
-        setRun((prev) => prev ? {
-          ...prev,
-          status: 'canceled',
-          finished_at: event.finished_at || undefined,
-        } : null);
+        setRun((prev) => {
+          if (prev) {
+            toast('Run canceled', {
+              icon: '⏹️',
+              duration: 4000,
+            });
+          }
+          return prev ? {
+            ...prev,
+            status: 'canceled',
+            finished_at: event.finished_at || undefined,
+          } : null;
+        });
         setIsSSEConnected(false);
       },
       onError: () => {
@@ -154,9 +178,12 @@ export default function RunDetail() {
     if (!id) return;
     try {
       await api.cancelRun(id);
+      toast('Canceling run...', { icon: '⏳' });
       loadRun();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel run');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to cancel run';
+      setError(errorMsg);
+      toast.error(errorMsg);
     }
   };
 
@@ -165,9 +192,12 @@ export default function RunDetail() {
     setDeleting(true);
     try {
       await api.deleteRun(id);
+      toast.success('Run deleted');
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete run');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to delete run';
+      setError(errorMsg);
+      toast.error(errorMsg);
       setDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -188,8 +218,11 @@ export default function RunDetail() {
       await api.updateRunTags(id, updatedTags);
       setRun({ ...run, tags: updatedTags });
       setNewTag('');
+      toast.success(`Tag added: ${newTag.trim()}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add tag');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to add tag';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSavingTags(false);
     }
@@ -203,8 +236,11 @@ export default function RunDetail() {
       const updatedTags = currentTags.filter((t) => t !== tagToRemove);
       await api.updateRunTags(id, updatedTags);
       setRun({ ...run, tags: updatedTags });
+      toast.success(`Tag removed: ${tagToRemove}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove tag');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to remove tag';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSavingTags(false);
     }
