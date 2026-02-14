@@ -32,6 +32,8 @@ from app.db.models import (
     RunSummary, 
     RunTagsUpdate,
     RunNotesUpdate,
+    ScheduledRunCreate,
+    ScheduledRunUpdate,
     User,
     RunCreatedResponse,
     MessageResponse,
@@ -556,6 +558,141 @@ async def update_run_tags(
     return {"tags": updated_run.tags}
 
 
+class RunDuplicateRequest(BaseModel):
+    """Request body for duplicating a run with optional overrides."""
+    model: Optional[str] = Field(None, description="Override the model")
+    limit: Optional[int] = Field(None, ge=1, description="Override the sample limit")
+    temperature: Optional[float] = Field(None, ge=0, le=2, description="Override the temperature")
+    top_p: Optional[float] = Field(None, ge=0, le=1, description="Override top_p")
+    max_tokens: Optional[int] = Field(None, ge=1, description="Override max_tokens")
+    timeout: Optional[int] = Field(None, ge=1, description="Override timeout")
+    epochs: Optional[int] = Field(None, ge=1, description="Override epochs")
+    max_connections: Optional[int] = Field(None, ge=1, description="Override max_connections")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "model": "anthropic/claude-3-5-sonnet",
+                "limit": 50
+            }
+        }
+    )
+
+
+from pydantic import ConfigDict
+
+
+@router.post(
+    "/runs/{run_id}/duplicate",
+    response_model=RunCreatedResponse,
+    summary="Duplicate a run",
+    description="Create a new run by duplicating an existing run's configuration with optional overrides.",
+    responses={
+        200: {
+            "description": "Duplicate run created and started",
+            "content": {
+                "application/json": {
+                    "example": {"run_id": "550e8400-e29b-41d4-a716-446655440000"}
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Original run not found",
+        }
+    }
+)
+async def duplicate_run(
+    run_id: str,
+    overrides: Optional[RunDuplicateRequest] = None,
+    background_tasks: BackgroundTasks = None,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Duplicate a run with optional parameter overrides.
+    
+    Creates a new benchmark run by copying the configuration from an existing run.
+    You can optionally override specific parameters like model, limit, or temperature.
+    
+    **Parameters:**
+    - **run_id**: The ID of the run to duplicate
+    
+    **Optional overrides:**
+    - **model**: Use a different model
+    - **limit**: Change the sample limit
+    - **temperature**: Adjust sampling temperature
+    - **top_p**: Adjust nucleus sampling
+    - **max_tokens**: Change max tokens per response
+    - **timeout**: Change request timeout
+    - **epochs**: Change number of epochs
+    - **max_connections**: Change concurrent connections
+    
+    **Requires authentication.**
+    """
+    # Get the original run
+    original_run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if original_run is None:
+        raise RunNotFoundError(run_id)
+    
+    # Build the new run configuration from original
+    original_config = original_run.config
+    
+    new_config_dict = {
+        "benchmark": original_run.benchmark,
+        "model": original_run.model,
+    }
+    
+    # Copy over config parameters if they exist
+    if original_config:
+        if original_config.limit is not None:
+            new_config_dict["limit"] = original_config.limit
+        if original_config.temperature is not None:
+            new_config_dict["temperature"] = original_config.temperature
+        if original_config.top_p is not None:
+            new_config_dict["top_p"] = original_config.top_p
+        if original_config.max_tokens is not None:
+            new_config_dict["max_tokens"] = original_config.max_tokens
+        if original_config.timeout is not None:
+            new_config_dict["timeout"] = original_config.timeout
+        if original_config.epochs is not None:
+            new_config_dict["epochs"] = original_config.epochs
+        if original_config.max_connections is not None:
+            new_config_dict["max_connections"] = original_config.max_connections
+    
+    # Apply overrides if provided
+    if overrides:
+        if overrides.model is not None:
+            new_config_dict["model"] = overrides.model
+        if overrides.limit is not None:
+            new_config_dict["limit"] = overrides.limit
+        if overrides.temperature is not None:
+            new_config_dict["temperature"] = overrides.temperature
+        if overrides.top_p is not None:
+            new_config_dict["top_p"] = overrides.top_p
+        if overrides.max_tokens is not None:
+            new_config_dict["max_tokens"] = overrides.max_tokens
+        if overrides.timeout is not None:
+            new_config_dict["timeout"] = overrides.timeout
+        if overrides.epochs is not None:
+            new_config_dict["epochs"] = overrides.epochs
+        if overrides.max_connections is not None:
+            new_config_dict["max_connections"] = overrides.max_connections
+    
+    # Create the new run
+    run_create = RunCreate(**new_config_dict)
+    new_run = await run_store.create_run(run_create, user_id=current_user.user_id)
+    
+    # Get user's API keys for the run
+    env_vars = await api_key_service.get_decrypted_keys_for_run(current_user.user_id)
+    
+    # Start execution in background with API keys
+    background_tasks.add_task(executor.execute_run, new_run, env_vars)
+    
+    return {"run_id": new_run.run_id}
+
+
 @router.patch(
     "/runs/{run_id}/notes",
     summary="Update run notes",
@@ -604,6 +741,280 @@ async def update_run_notes(
         )
     
     return {"notes": updated_run.notes}
+
+
+# =============================================================================
+# Scheduled Runs Endpoints
+# =============================================================================
+
+@router.post(
+    "/runs/schedule",
+    response_model=RunCreatedResponse,
+    summary="Schedule a benchmark run",
+    description="Schedule a benchmark run for future execution.",
+    responses={
+        200: {
+            "description": "Run scheduled successfully",
+            "content": {
+                "application/json": {
+                    "example": {"run_id": "550e8400-e29b-41d4-a716-446655440000"}
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        422: {
+            "description": "Validation error or scheduled time in the past",
+        }
+    }
+)
+async def schedule_run(
+    scheduled_run: ScheduledRunCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Schedule a benchmark run for future execution.
+    
+    The run will be created immediately with status `queued` and will be
+    automatically executed when the scheduled time is reached.
+    
+    **Required fields:**
+    - **benchmark**: Name of the benchmark
+    - **model**: Model identifier
+    - **scheduled_for**: ISO 8601 datetime when to execute
+    
+    **Note:** The scheduled time must be in the future.
+    
+    **Requires authentication.**
+    """
+    from datetime import datetime
+    
+    # Validate that scheduled_for is in the future
+    now = datetime.utcnow()
+    if scheduled_run.scheduled_for <= now:
+        raise ValidationError(
+            message="Scheduled time must be in the future",
+            detail="Please select a time that is after the current time."
+        )
+    
+    # Create RunCreate from ScheduledRunCreate
+    run_create = RunCreate(
+        benchmark=scheduled_run.benchmark,
+        model=scheduled_run.model,
+        limit=scheduled_run.limit,
+        temperature=scheduled_run.temperature,
+        top_p=scheduled_run.top_p,
+        max_tokens=scheduled_run.max_tokens,
+        timeout=scheduled_run.timeout,
+        epochs=scheduled_run.epochs,
+        max_connections=scheduled_run.max_connections,
+    )
+    
+    run = await run_store.create_run(
+        run_create, 
+        user_id=current_user.user_id,
+        scheduled_for=scheduled_run.scheduled_for,
+    )
+    
+    return {"run_id": run.run_id}
+
+
+@router.get(
+    "/runs/scheduled",
+    response_model=List[RunSummary],
+    summary="List scheduled runs",
+    description="List all pending scheduled runs.",
+    responses={
+        200: {
+            "description": "List of pending scheduled runs",
+            "content": {
+                "application/json": {
+                    "example": [{
+                        "run_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "benchmark": "mmlu",
+                        "model": "openai/gpt-4o",
+                        "status": "queued",
+                        "created_at": "2024-01-15T10:30:00Z",
+                        "scheduled_for": "2024-01-15T14:00:00Z",
+                        "tags": []
+                    }]
+                }
+            }
+        }
+    }
+)
+async def list_scheduled_runs(
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    List all pending scheduled runs.
+    
+    Returns runs that have a `scheduled_for` time set and haven't started yet.
+    Runs are sorted by scheduled time (earliest first).
+    
+    Authentication is optional for this endpoint.
+    """
+    user_id = current_user.user_id if current_user else None
+    return await run_store.list_scheduled_runs(user_id=user_id)
+
+
+@router.patch(
+    "/runs/scheduled/{run_id}",
+    response_model=RunSummary,
+    summary="Update scheduled run time",
+    description="Update the scheduled time for a pending run.",
+    responses={
+        200: {
+            "description": "Scheduled time updated",
+        },
+        400: {
+            "description": "Run is not a scheduled run or has already started",
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        },
+        422: {
+            "description": "Scheduled time in the past",
+        }
+    }
+)
+async def update_scheduled_run(
+    run_id: str,
+    schedule_update: ScheduledRunUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update the scheduled time for a pending run.
+    
+    Only works for runs that:
+    - Have status `queued`
+    - Have a `scheduled_for` time set
+    - Haven't started execution yet
+    
+    **Requires authentication.**
+    """
+    from datetime import datetime
+    
+    # Validate that scheduled_for is in the future
+    now = datetime.utcnow()
+    if schedule_update.scheduled_for <= now:
+        raise ValidationError(
+            message="Scheduled time must be in the future",
+            detail="Please select a time that is after the current time."
+        )
+    
+    # Get the run first to check it exists and is a scheduled run
+    run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if run is None:
+        raise RunNotFoundError(run_id)
+    
+    if run.status != RunStatus.QUEUED:
+        raise ValidationError(
+            message="Cannot reschedule a run that has already started",
+            detail="Only queued runs can be rescheduled."
+        )
+    
+    if run.scheduled_for is None:
+        raise ValidationError(
+            message="This run is not a scheduled run",
+            detail="Use the cancel endpoint for immediate runs."
+        )
+    
+    updated_run = await run_store.update_scheduled_time(
+        run_id, 
+        schedule_update.scheduled_for,
+        user_id=current_user.user_id,
+    )
+    
+    if updated_run is None:
+        raise ServerError(
+            message="Failed to update scheduled time",
+            detail="An error occurred while updating the scheduled time."
+        )
+    
+    return RunSummary(
+        run_id=updated_run.run_id,
+        benchmark=updated_run.benchmark,
+        model=updated_run.model,
+        status=updated_run.status,
+        created_at=updated_run.created_at,
+        finished_at=updated_run.finished_at,
+        scheduled_for=updated_run.scheduled_for,
+        primary_metric=updated_run.primary_metric,
+        primary_metric_name=updated_run.primary_metric_name,
+        tags=updated_run.tags,
+        notes=updated_run.notes,
+        template_name=updated_run.template_name,
+    )
+
+
+@router.delete(
+    "/runs/scheduled/{run_id}",
+    response_model=MessageResponse,
+    summary="Cancel scheduled run",
+    description="Cancel a scheduled run before it starts.",
+    responses={
+        200: {
+            "description": "Scheduled run canceled",
+            "content": {
+                "application/json": {
+                    "example": {"status": "canceled"}
+                }
+            }
+        },
+        400: {
+            "description": "Run is not a scheduled run or has already started",
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        }
+    }
+)
+async def cancel_scheduled_run(
+    run_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Cancel a scheduled run before it starts.
+    
+    This deletes the scheduled run entirely. Only works for runs that:
+    - Have status `queued`
+    - Have a `scheduled_for` time set
+    - Haven't started execution yet
+    
+    **Requires authentication.**
+    """
+    run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if run is None:
+        raise RunNotFoundError(run_id)
+    
+    if run.status != RunStatus.QUEUED:
+        raise ValidationError(
+            message="Cannot cancel a run that has already started",
+            detail="Use the cancel endpoint for running runs."
+        )
+    
+    if run.scheduled_for is None:
+        raise ValidationError(
+            message="This run is not a scheduled run",
+            detail="Use the delete endpoint for immediate runs."
+        )
+    
+    success = await run_store.cancel_scheduled_run(run_id, user_id=current_user.user_id)
+    if not success:
+        raise ServerError(
+            message="Failed to cancel scheduled run",
+            detail="An error occurred while canceling the run."
+        )
+    
+    return {"status": "canceled"}
 
 
 async def tail_file(path: str, position: int = 0) -> tuple[list[str], int]:

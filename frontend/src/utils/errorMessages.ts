@@ -32,6 +32,7 @@ export type ErrorContext =
   | 'creating-run'
   | 'deleting-run'
   | 'canceling-run'
+  | 'duplicating-run'
   | 'loading-benchmarks'
   | 'loading-models'
   | 'saving-api-key'
@@ -39,6 +40,7 @@ export type ErrorContext =
   | 'register'
   | 'loading-eval'
   | 'comparing-runs'
+  | 'loading-analytics'
   | 'default';
 
 /**
@@ -417,6 +419,18 @@ const CONTEXT_DEFAULTS: Record<ErrorContext, Omit<ParsedError, 'originalError'>>
     title: 'Comparison Failed',
     message: 'We couldn\'t load the runs for comparison.',
     action: 'Some runs may have been deleted. Select different runs to compare.',
+    recoverable: true,
+  },
+  'duplicating-run': {
+    title: 'Failed to Duplicate Run',
+    message: 'The run couldn\'t be duplicated.',
+    action: 'Check your configuration and try again.',
+    recoverable: true,
+  },
+  'loading-analytics': {
+    title: 'Unable to Load Analytics',
+    message: 'Analytics data couldn\'t be loaded.',
+    action: 'Check your connection and try again.',
     recoverable: true,
   },
   'default': {

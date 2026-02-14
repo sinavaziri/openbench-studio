@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, RunDetail as RunDetailType } from '../api/client';
+import { api, RunDetail as RunDetailType, RunDuplicateOverrides, RunConfig } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import LogTail from '../components/LogTail';
 import MetricCards from '../components/MetricCards';
 import BreakdownChart from '../components/BreakdownChart';
 import ArtifactViewer from '../components/ArtifactViewer';
+import DuplicateRunModal from '../components/DuplicateRunModal';
 import { ErrorState } from '../components/ErrorBoundary';
 import { parseError } from '../utils/errorMessages';
 import { 
@@ -73,6 +74,10 @@ export default function RunDetail() {
   
   // Artifact preview
   const [previewArtifact, setPreviewArtifact] = useState<string | null>(null);
+  
+  // Duplicate modal
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   
   // Track WebSocket connection for controlling log initialization
   const wsConnectedRef = useRef(false);
@@ -262,6 +267,24 @@ export default function RunDetail() {
     if (!run?.config) return;
     // Navigate to new run page with config as state
     navigate('/', { state: { prefill: run.config } });
+  };
+
+  const handleDuplicate = async (overrides: RunDuplicateOverrides) => {
+    if (!id) return;
+    setDuplicating(true);
+    try {
+      const result = await api.duplicateRun(id, overrides);
+      toast.success(`Duplicate run started`, {
+        icon: '🔄',
+      });
+      setShowDuplicateModal(false);
+      navigate(`/runs/${result.run_id}`);
+    } catch (err) {
+      const parsed = parseError(err, 'duplicating-run');
+      toast.error(parsed.message);
+    } finally {
+      setDuplicating(false);
+    }
   };
 
   const handleAddTag = async () => {
@@ -502,12 +525,21 @@ export default function RunDetail() {
             )}
             
             {run.config && !isActive && (
-              <button
-                onClick={handleRunAgain}
-                className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-foreground bg-background-tertiary border border-border-secondary hover:bg-border transition-colors min-h-[44px]"
-              >
-                Run Again →
-              </button>
+              <>
+                <button
+                  onClick={() => setShowDuplicateModal(true)}
+                  disabled={duplicating}
+                  className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-accent-foreground bg-accent hover:opacity-90 disabled:opacity-50 transition-all min-h-[44px]"
+                >
+                  {duplicating ? 'Starting...' : 'Duplicate →'}
+                </button>
+                <button
+                  onClick={handleRunAgain}
+                  className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
+                >
+                  Edit & Run →
+                </button>
+              </>
             )}
             
             {isAuthenticated && !isActive && (
@@ -1015,6 +1047,19 @@ export default function RunDetail() {
           runId={id}
           artifact={previewArtifact}
           onClose={() => setPreviewArtifact(null)}
+        />
+      )}
+
+      {/* Duplicate Run Modal */}
+      {run.config && (
+        <DuplicateRunModal
+          isOpen={showDuplicateModal}
+          onClose={() => setShowDuplicateModal(false)}
+          onDuplicate={handleDuplicate}
+          originalConfig={run.config as RunConfig}
+          originalModel={run.model}
+          benchmark={run.benchmark}
+          isSubmitting={duplicating}
         />
       )}
     </Layout>

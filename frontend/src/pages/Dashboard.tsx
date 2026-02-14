@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, RunFilters, RunSummary } from '../api/client';
+import { api, RunFilters, RunSummary, RunDuplicateOverrides, RunConfig } from '../api/client';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
+import DuplicateRunModal from '../components/DuplicateRunModal';
 import { InlineError } from '../components/ErrorBoundary';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
@@ -92,13 +93,16 @@ function saveFilters(filters: SavedFilters): void {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [scheduledRuns, setScheduledRuns] = useState<RunSummary[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingScheduled, setLoadingScheduled] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [totalRuns, setTotalRuns] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'runs' | 'scheduled'>('runs');
   const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
   // Load saved filters from localStorage
@@ -126,6 +130,11 @@ export default function Dashboard() {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { isHelpOpen } = useKeyboardShortcuts();
+
+  // Duplicate modal state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateRunId, setDuplicateRunId] = useState<string | null>(null);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
@@ -232,6 +241,18 @@ export default function Dashboard() {
     }
   }, []);
 
+  const loadScheduledRuns = useCallback(async () => {
+    try {
+      setLoadingScheduled(true);
+      const scheduled = await api.listScheduledRuns();
+      setScheduledRuns(scheduled);
+    } catch {
+      // Ignore scheduled runs loading errors
+    } finally {
+      setLoadingScheduled(false);
+    }
+  }, []);
+
   // Update the ref when loadRuns changes
   useEffect(() => {
     loadRunsRef.current = loadRuns;
@@ -301,6 +322,31 @@ export default function Dashboard() {
     if (selectedIds.size >= 2) {
       const idsParam = Array.from(selectedIds).join(',');
       navigate(`/compare?ids=${idsParam}`);
+    }
+  };
+
+  const handleOpenDuplicateModal = () => {
+    if (selectedIds.size !== 1) return;
+    const runId = Array.from(selectedIds)[0];
+    setDuplicateRunId(runId);
+    setShowDuplicateModal(true);
+  };
+
+  const handleDuplicate = async (overrides: RunDuplicateOverrides) => {
+    if (!duplicateRunId) return;
+    setIsDuplicating(true);
+    try {
+      const result = await api.duplicateRun(duplicateRunId, overrides);
+      toast.success('Duplicate run started', { icon: '🔄' });
+      setShowDuplicateModal(false);
+      setDuplicateRunId(null);
+      setSelectedIds(new Set());
+      navigate(`/runs/${result.run_id}`);
+    } catch (err) {
+      const parsed = parseError(err, 'duplicating-run');
+      toast.error(parsed.message);
+    } finally {
+      setIsDuplicating(false);
     }
   };
 
@@ -620,6 +666,19 @@ export default function Dashboard() {
                 </div>
                 
                 <button
+                  onClick={handleOpenDuplicateModal}
+                  disabled={selectedIds.size !== 1 || isDuplicating}
+                  className={`text-[13px] px-4 py-2 transition-all ${
+                    selectedIds.size === 1 && !isDuplicating
+                      ? 'text-foreground bg-background-secondary hover:bg-background-tertiary border border-border'
+                      : 'text-muted-foreground bg-background-tertiary cursor-not-allowed border border-border'
+                  }`}
+                  title={selectedIds.size !== 1 ? 'Select exactly one run to duplicate' : 'Duplicate this run'}
+                >
+                  {isDuplicating ? 'Duplicating...' : 'Duplicate'}
+                </button>
+                
+                <button
                   onClick={handleCompare}
                   disabled={selectedIds.size < 2}
                   className={`text-[13px] px-4 py-2 transition-all ${
@@ -851,6 +910,33 @@ export default function Dashboard() {
           searchQuery={searchQuery}
         />
       </div>
+
+      {/* Duplicate Run Modal */}
+      {duplicateRunId && (() => {
+        const selectedRun = runs.find(r => r.run_id === duplicateRunId);
+        if (!selectedRun) return null;
+        
+        // Build a minimal config from the run summary
+        const config: RunConfig = {
+          benchmark: selectedRun.benchmark,
+          model: selectedRun.model,
+        };
+        
+        return (
+          <DuplicateRunModal
+            isOpen={showDuplicateModal}
+            onClose={() => {
+              setShowDuplicateModal(false);
+              setDuplicateRunId(null);
+            }}
+            onDuplicate={handleDuplicate}
+            originalConfig={config}
+            originalModel={selectedRun.model}
+            benchmark={selectedRun.benchmark}
+            isSubmitting={isDuplicating}
+          />
+        );
+      })()}
     </Layout>
   );
 }
