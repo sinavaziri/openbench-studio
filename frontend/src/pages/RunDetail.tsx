@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, RunDetail as RunDetailType, SSEProgressEvent } from '../api/client';
+import { api, RunDetail as RunDetailType } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import LogTail from '../components/LogTail';
@@ -10,6 +10,37 @@ import BreakdownChart from '../components/BreakdownChart';
 import ArtifactViewer from '../components/ArtifactViewer';
 import { ErrorState } from '../components/ErrorBoundary';
 import { parseError } from '../utils/errorMessages';
+import { 
+  useRunWebSocket, 
+  RunProgressEvent, 
+  RunStatusEvent, 
+  RunLogLineEvent,
+  RunCompletedEvent,
+  RunFailedEvent,
+  RunCanceledEvent 
+} from '../hooks/useWebSocket';
+import ConnectionStatus from '../components/ConnectionStatus';
+
+// Generate a consistent color for a tag based on its content
+function getTagColor(tag: string): string {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colors = [
+    'rgba(59, 130, 246, 0.15)',   // blue
+    'rgba(16, 185, 129, 0.15)',   // green
+    'rgba(245, 158, 11, 0.15)',   // amber
+    'rgba(239, 68, 68, 0.15)',    // red
+    'rgba(139, 92, 246, 0.15)',   // purple
+    'rgba(236, 72, 153, 0.15)',   // pink
+    'rgba(6, 182, 212, 0.15)',    // cyan
+    'rgba(249, 115, 22, 0.15)',   // orange
+  ];
+  
+  return colors[Math.abs(hash) % colors.length];
+}
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,11 +50,10 @@ export default function RunDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
-  // Live log lines (appended via SSE)
+  // Live log lines (appended via WebSocket)
   const [stdoutLines, setStdoutLines] = useState<string[]>([]);
   const [stderrLines, setStderrLines] = useState<string[]>([]);
-  const [progress, setProgress] = useState<SSEProgressEvent | null>(null);
-  const [isSSEConnected, setIsSSEConnected] = useState(false);
+  const [progress, setProgress] = useState<RunProgressEvent | null>(null);
   
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -33,13 +63,19 @@ export default function RunDetail() {
   const [editingTags, setEditingTags] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [savingTags, setSavingTags] = useState(false);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  
+  // Notes
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
   
   // Artifact preview
   const [previewArtifact, setPreviewArtifact] = useState<string | null>(null);
   
-  // Refs to track SSE subscription
-  const sseCleanup = useRef<(() => void) | null>(null);
-  const hasInitializedSSE = useRef(false);
+  // Track WebSocket connection for controlling log initialization
+  const wsConnectedRef = useRef(false);
 
   // Load initial run data
   const loadRun = useCallback(async () => {
@@ -49,11 +85,11 @@ export default function RunDetail() {
       setRun(data);
       setError(null);
       
-      // Initialize log lines from tail if not using SSE yet
-      if (!isSSEConnected && data.stdout_tail) {
+      // Initialize log lines from tail if not using WebSocket yet
+      if (!wsConnectedRef.current && data.stdout_tail) {
         setStdoutLines(data.stdout_tail.split('\n'));
       }
-      if (!isSSEConnected && data.stderr_tail) {
+      if (!wsConnectedRef.current && data.stderr_tail) {
         setStderrLines(data.stderr_tail.split('\n'));
       }
     } catch (err) {
@@ -67,120 +103,133 @@ export default function RunDetail() {
     } finally {
       setLoading(false);
     }
-  }, [id, isSSEConnected]);
-
-  // Subscribe to SSE events
-  const subscribeToEvents = useCallback(() => {
-    if (!id || hasInitializedSSE.current) return;
-    
-    hasInitializedSSE.current = true;
-    
-    const cleanup = api.subscribeToRunEvents(id, {
-      onStatus: (event) => {
-        setRun((prev) => prev ? { ...prev, status: event.status as RunDetailType['status'] } : null);
-      },
-      onLogLine: (event) => {
-        if (event.stream === 'stdout') {
-          setStdoutLines((prev) => [...prev, event.line]);
-        } else {
-          setStderrLines((prev) => [...prev, event.line]);
-        }
-      },
-      onProgress: (event) => {
-        setProgress(event);
-      },
-      onCompleted: (event) => {
-        setRun((prev) => {
-          if (prev) {
-            toast.success(`Run completed: ${prev.benchmark}`, {
-              icon: '✅',
-              duration: 5000,
-            });
-          }
-          return prev ? {
-            ...prev,
-            status: 'completed',
-            exit_code: event.exit_code,
-            finished_at: event.finished_at || undefined,
-          } : null;
-        });
-        setIsSSEConnected(false);
-      },
-      onFailed: (event) => {
-        setRun((prev) => {
-          if (prev) {
-            toast.error(`Run failed: ${event.error || 'Unknown error'}`, {
-              duration: 6000,
-            });
-          }
-          return prev ? {
-            ...prev,
-            status: 'failed',
-            exit_code: event.exit_code,
-            error: event.error || undefined,
-            finished_at: event.finished_at || undefined,
-          } : null;
-        });
-        setIsSSEConnected(false);
-      },
-      onCanceled: (event) => {
-        setRun((prev) => {
-          if (prev) {
-            toast('Run canceled', {
-              icon: '⏹️',
-              duration: 4000,
-            });
-          }
-          return prev ? {
-            ...prev,
-            status: 'canceled',
-            finished_at: event.finished_at || undefined,
-          } : null;
-        });
-        setIsSSEConnected(false);
-      },
-      onError: () => {
-        // SSE failed, fall back to polling
-        setIsSSEConnected(false);
-        hasInitializedSSE.current = false;
-      },
-    });
-    
-    sseCleanup.current = cleanup;
-    setIsSSEConnected(true);
   }, [id]);
+
+  // WebSocket event handlers
+  const handleWsStatus = useCallback((event: RunStatusEvent) => {
+    setRun((prev) => prev ? { ...prev, status: event.status as RunDetailType['status'] } : null);
+  }, []);
+
+  const handleWsLogLine = useCallback((event: RunLogLineEvent) => {
+    if (event.stream === 'stdout') {
+      setStdoutLines((prev) => [...prev, event.line]);
+    } else {
+      setStderrLines((prev) => [...prev, event.line]);
+    }
+  }, []);
+
+  const handleWsProgress = useCallback((event: RunProgressEvent) => {
+    setProgress(event);
+  }, []);
+
+  const handleWsCompleted = useCallback((event: RunCompletedEvent) => {
+    setRun((prev) => {
+      if (prev) {
+        toast.success(`Run completed: ${prev.benchmark}`, {
+          icon: '✅',
+          duration: 5000,
+        });
+      }
+      return prev ? {
+        ...prev,
+        status: 'completed',
+        exit_code: event.exit_code,
+        finished_at: event.finished_at || undefined,
+      } : null;
+    });
+  }, []);
+
+  const handleWsFailed = useCallback((event: RunFailedEvent) => {
+    setRun((prev) => {
+      if (prev) {
+        toast.error(`Run failed: ${event.error || 'Unknown error'}`, {
+          duration: 6000,
+        });
+      }
+      return prev ? {
+        ...prev,
+        status: 'failed',
+        exit_code: event.exit_code,
+        error: event.error || undefined,
+        finished_at: event.finished_at || undefined,
+      } : null;
+    });
+  }, []);
+
+  const handleWsCanceled = useCallback((event: RunCanceledEvent) => {
+    setRun((prev) => {
+      if (prev) {
+        toast('Run canceled', {
+          icon: '⏹️',
+          duration: 4000,
+        });
+      }
+      return prev ? {
+        ...prev,
+        status: 'canceled',
+        finished_at: event.finished_at || undefined,
+      } : null;
+    });
+  }, []);
+
+  // WebSocket connection for live updates (only for active runs)
+  const isActiveRun = run?.status === 'running' || run?.status === 'queued';
+  const { status: wsStatus, reconnectAttempts, isConnected } = useRunWebSocket({
+    runId: id || '',
+    autoConnect: isActiveRun && !!id,
+    onStatus: handleWsStatus,
+    onLogLine: handleWsLogLine,
+    onProgress: handleWsProgress,
+    onCompleted: handleWsCompleted,
+    onFailed: handleWsFailed,
+    onCanceled: handleWsCanceled,
+    onError: () => {
+      // WebSocket failed, will fall back to polling
+    },
+  });
+
+  // Track WebSocket connection state
+  useEffect(() => {
+    wsConnectedRef.current = isConnected;
+  }, [isConnected]);
 
   // Initial load
   useEffect(() => {
     loadRun();
   }, [loadRun]);
 
-  // Start SSE when run is active
+  // Load all tags for autocomplete
   useEffect(() => {
-    if (run && (run.status === 'running' || run.status === 'queued')) {
-      subscribeToEvents();
-    }
-    
-    return () => {
-      if (sseCleanup.current) {
-        sseCleanup.current();
-        sseCleanup.current = null;
+    const loadTags = async () => {
+      try {
+        const tags = await api.listAllTags();
+        setAllTags(tags);
+      } catch {
+        // Ignore errors loading tags
       }
     };
-  }, [run?.status, subscribeToEvents]);
+    loadTags();
+  }, []);
 
-  // Polling fallback when SSE is not connected
+  // Initialize notes value when run loads
   useEffect(() => {
-    if (!id || isSSEConnected) return;
+    if (run) {
+      setNotesValue(run.notes || '');
+    }
+  }, [run?.notes]);
+
+  // Polling fallback when WebSocket is not connected
+  useEffect(() => {
+    if (!id || isConnected) return;
     
     if (run?.status === 'running' || run?.status === 'queued' || !run) {
       const interval = setInterval(() => {
         loadRun();
-      }, 2000);
+      }, 3000);
       
       return () => clearInterval(interval);
     }
-  }, [id, run?.status, isSSEConnected, loadRun]);
+  }, [id, run?.status, isConnected, loadRun]);
 
   const handleCancel = async () => {
     if (!id) return;
@@ -250,6 +299,35 @@ export default function RunDetail() {
     }
   };
 
+  const handleSaveNotes = async () => {
+    if (!id || !run) return;
+    setSavingNotes(true);
+    try {
+      const notes = notesValue.trim() || null;
+      await api.updateRunNotes(id, notes);
+      setRun({ ...run, notes: notes || undefined });
+      setEditingNotes(false);
+      toast.success('Notes saved');
+    } catch (err) {
+      const parsed = parseError(err);
+      toast.error(parsed.message);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const handleCancelNotesEdit = () => {
+    setNotesValue(run?.notes || '');
+    setEditingNotes(false);
+  };
+
+  // Filter tags for autocomplete
+  const filteredTagSuggestions = allTags.filter(
+    (tag) => 
+      tag.toLowerCase().includes(newTag.toLowerCase()) &&
+      !(run?.tags || []).includes(tag)
+  ).slice(0, 5);
+
   if (loading) {
     return (
       <Layout>
@@ -307,7 +385,7 @@ export default function RunDetail() {
 
   const isActive = run.status === 'running' || run.status === 'queued';
 
-  // Combine initial logs with SSE updates
+  // Combine initial logs with WebSocket updates
   const displayStdout = stdoutLines.join('\n') || run.stdout_tail || '';
   const displayStderr = stderrLines.join('\n') || run.stderr_tail || '';
 
@@ -331,11 +409,11 @@ export default function RunDetail() {
             )}
             {statusLabels[run.status]}
           </span>
-          {isSSEConnected && (
-            <span className="text-[11px] text-success flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-success" />
-              Live
-            </span>
+          {isActiveRun && (
+            <ConnectionStatus 
+              status={wsStatus} 
+              reconnectAttempts={reconnectAttempts}
+            />
           )}
         </div>
         <p className="text-[15px] text-muted-foreground">
@@ -538,7 +616,8 @@ export default function RunDetail() {
               {(run.tags || []).map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-muted bg-background-tertiary border border-border-secondary"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-muted border border-border-secondary"
+                  style={{ backgroundColor: getTagColor(tag) }}
                 >
                   {tag}
                   {editingTags && (
@@ -558,20 +637,51 @@ export default function RunDetail() {
               )}
               
               {editingTags && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
-                    placeholder="Add tag..."
-                    className="px-2 py-1 w-24 text-[12px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none"
-                  />
+                <div className="relative flex items-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={newTag}
+                      onChange={(e) => {
+                        setNewTag(e.target.value);
+                        setShowTagSuggestions(e.target.value.length > 0);
+                      }}
+                      onFocus={() => setShowTagSuggestions(newTag.length > 0 || filteredTagSuggestions.length > 0)}
+                      onBlur={() => {
+                        // Delay hiding to allow click on suggestion
+                        setTimeout(() => setShowTagSuggestions(false), 150);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                        if (e.key === 'Escape') {
+                          setShowTagSuggestions(false);
+                        }
+                      }}
+                      placeholder="Add tag..."
+                      className="px-2 py-1 w-32 text-[12px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none"
+                    />
+                    {/* Tag suggestions dropdown */}
+                    {showTagSuggestions && filteredTagSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-background-secondary border border-border-secondary shadow-lg z-10">
+                        {filteredTagSuggestions.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => {
+                              setNewTag(tag);
+                              handleAddTag();
+                              setShowTagSuggestions(false);
+                            }}
+                            className="w-full px-2 py-1.5 text-left text-[12px] text-muted hover:bg-background-tertiary hover:text-foreground transition-colors"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={handleAddTag}
                     disabled={!newTag.trim() || savingTags}
@@ -583,6 +693,7 @@ export default function RunDetail() {
                     onClick={() => {
                       setEditingTags(false);
                       setNewTag('');
+                      setShowTagSuggestions(false);
                     }}
                     className="px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -591,6 +702,58 @@ export default function RunDetail() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Notes */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+                Notes
+              </p>
+              {isAuthenticated && !editingNotes && (
+                <button
+                  onClick={() => setEditingNotes(true)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {run.notes ? 'Edit' : 'Add'}
+                </button>
+              )}
+            </div>
+            
+            {editingNotes ? (
+              <div className="space-y-2">
+                <textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Add notes about this run..."
+                  rows={4}
+                  className="w-full px-3 py-2 text-[13px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveNotes}
+                    disabled={savingNotes}
+                    className="px-3 py-1.5 text-[12px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors"
+                  >
+                    {savingNotes ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handleCancelNotesEdit}
+                    className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {run.notes ? (
+                  <p className="text-[13px] text-muted whitespace-pre-wrap">{run.notes}</p>
+                ) : (
+                  <p className="text-[13px] text-muted-foreground italic">No notes</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

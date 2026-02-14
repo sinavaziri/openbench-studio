@@ -30,7 +30,8 @@ from app.db.models import (
     RunCreate, 
     RunStatus, 
     RunSummary, 
-    RunTagsUpdate, 
+    RunTagsUpdate,
+    RunNotesUpdate,
     User,
     RunCreatedResponse,
     MessageResponse,
@@ -517,6 +518,56 @@ async def update_run_tags(
         )
     
     return {"tags": updated_run.tags}
+
+
+@router.patch(
+    "/runs/{run_id}/notes",
+    summary="Update run notes",
+    description="Update the notes for a specific run. Notes can be any text.",
+    responses={
+        200: {
+            "description": "Notes updated successfully",
+            "content": {
+                "application/json": {
+                    "example": {"notes": "This run uses the updated prompt format."}
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        },
+        500: {
+            "description": "Failed to update notes",
+        }
+    }
+)
+async def update_run_notes(
+    run_id: str,
+    notes_update: RunNotesUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update notes for a run.
+    
+    Notes can be any freeform text. Pass `null` or an empty string to clear notes.
+    
+    **Requires authentication.**
+    """
+    run = await run_store.get_run(run_id, user_id=current_user.user_id)
+    if run is None:
+        raise RunNotFoundError(run_id)
+    
+    updated_run = await run_store.update_notes(run_id, notes_update.notes, user_id=current_user.user_id)
+    if updated_run is None:
+        raise ServerError(
+            message="Failed to update notes",
+            detail="An error occurred while saving the notes. Please try again."
+        )
+    
+    return {"notes": updated_run.notes}
 
 
 async def tail_file(path: str, position: int = 0) -> tuple[list[str], int]:

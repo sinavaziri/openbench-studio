@@ -82,6 +82,7 @@ class Run(Base):
     primary_metric = Column(Float, nullable=True)
     primary_metric_name = Column(String, nullable=True)
     tags_json = Column(Text, nullable=True, default="[]")
+    notes = Column(Text, nullable=True)  # User notes for the run
 
     # Relationships
     user = relationship("User", back_populates="runs")

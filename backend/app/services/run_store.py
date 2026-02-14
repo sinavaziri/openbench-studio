@@ -255,6 +255,41 @@ class RunStore:
         
         return await self.get_run(run_id, user_id=user_id)
 
+    async def update_notes(self, run_id: str, notes: Optional[str], user_id: Optional[str] = None) -> Optional[Run]:
+        """
+        Update notes for a run.
+        
+        Args:
+            run_id: The run ID to update
+            notes: New notes content (can be None to clear)
+            user_id: If provided, only updates if user owns the run
+            
+        Returns:
+            Updated run or None if not found/authorized
+        """
+        # Check the run exists and user has access
+        run = await self.get_run(run_id, user_id=user_id)
+        if run is None:
+            return None
+        
+        # Trim whitespace and allow empty string to clear notes
+        cleaned_notes = notes.strip() if notes else None
+        
+        async with get_db() as db:
+            if user_id is not None:
+                await db.execute(
+                    "UPDATE runs SET notes = ? WHERE run_id = ? AND (user_id = ? OR user_id IS NULL)",
+                    (cleaned_notes, run_id, user_id),
+                )
+            else:
+                await db.execute(
+                    "UPDATE runs SET notes = ? WHERE run_id = ?",
+                    (cleaned_notes, run_id),
+                )
+            await db.commit()
+        
+        return await self.get_run(run_id, user_id=user_id)
+
     async def get_all_tags(self, user_id: Optional[str] = None) -> list[str]:
         """Get all unique tags across all runs for a user."""
         async with get_db() as db:
@@ -296,6 +331,13 @@ class RunStore:
         if row["config_json"]:
             config = RunConfig(**json.loads(row["config_json"]))
         
+        # Safely get notes column (may not exist in older databases)
+        notes = None
+        try:
+            notes = row["notes"]
+        except (KeyError, IndexError):
+            pass
+        
         return Run(
             run_id=row["run_id"],
             user_id=row["user_id"],
@@ -312,10 +354,18 @@ class RunStore:
             primary_metric=row["primary_metric"],
             primary_metric_name=row["primary_metric_name"],
             tags=self._parse_tags(row),
+            notes=notes,
         )
 
     def _row_to_summary(self, row) -> RunSummary:
         """Convert a database row to a RunSummary model."""
+        # Safely get notes column (may not exist in older databases)
+        notes = None
+        try:
+            notes = row["notes"]
+        except (KeyError, IndexError):
+            pass
+        
         return RunSummary(
             run_id=row["run_id"],
             benchmark=row["benchmark"],
@@ -326,6 +376,7 @@ class RunStore:
             primary_metric=row["primary_metric"],
             primary_metric_name=row["primary_metric_name"],
             tags=self._parse_tags(row),
+            notes=notes,
         )
 
 

@@ -1,6 +1,27 @@
 import { Link } from 'react-router-dom';
 import type { RunSummary } from '../api/client';
 
+// Generate a consistent color for a tag based on its content
+function getTagColor(tag: string): string {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colors = [
+    'rgba(59, 130, 246, 0.15)',   // blue
+    'rgba(16, 185, 129, 0.15)',   // green
+    'rgba(245, 158, 11, 0.15)',   // amber
+    'rgba(239, 68, 68, 0.15)',    // red
+    'rgba(139, 92, 246, 0.15)',   // purple
+    'rgba(236, 72, 153, 0.15)',   // pink
+    'rgba(6, 182, 212, 0.15)',    // cyan
+    'rgba(249, 115, 22, 0.15)',   // orange
+  ];
+  
+  return colors[Math.abs(hash) % colors.length];
+}
+
 interface RunTableProps {
   runs: RunSummary[];
   loading?: boolean;
@@ -256,7 +277,8 @@ export default function RunTable({
                 {displayTags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-1.5 py-0.5 text-[10px] text-muted bg-background-tertiary border border-border-secondary"
+                    className="px-1.5 py-0.5 text-[10px] text-muted border border-border-secondary"
+                    style={{ backgroundColor: getTagColor(tag) }}
                   >
                     {tag}
                   </span>
@@ -311,7 +333,8 @@ export default function RunTable({
               {displayTags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-1.5 py-0.5 text-[10px] text-muted bg-background-tertiary border border-border-secondary"
+                  className="px-1.5 py-0.5 text-[10px] text-muted border border-border-secondary"
+                  style={{ backgroundColor: getTagColor(tag) }}
                 >
                   {tag}
                 </span>

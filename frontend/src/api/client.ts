@@ -163,6 +163,7 @@ export interface RunSummary {
   primary_metric?: number;
   primary_metric_name?: string;
   tags: string[];
+  notes?: string;
 }
 
 export interface RunFilters {
@@ -215,6 +216,7 @@ export interface RunDetail extends RunSummary {
   stderr_tail?: string;
   summary?: ResultSummary | null;  // Structured results summary
   tags: string[];  // User-defined tags for organization
+  notes?: string;  // User notes for the run
 }
 
 // SSE Event Types
@@ -579,6 +581,13 @@ class ApiClient {
     return this.request(`/runs/${runId}/tags`, {
       method: 'PATCH',
       body: JSON.stringify({ tags }),
+    }, true);  // Requires auth
+  }
+
+  async updateRunNotes(runId: string, notes: string | null): Promise<{ notes: string | null }> {
+    return this.request(`/runs/${runId}/notes`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
     }, true);  // Requires auth
   }
 
