@@ -104,63 +104,99 @@ async def create_run(
     return {"run_id": run.run_id}
 
 
+from app.db.models import RunListResponse
+
+
 @router.get(
     "/runs",
-    response_model=List[RunSummary],
+    response_model=RunListResponse,
     summary="List runs",
-    description="List recent benchmark runs with optional filtering.",
+    description="List recent benchmark runs with optional filtering and pagination.",
     responses={
         200: {
-            "description": "List of run summaries",
+            "description": "Paginated list of run summaries",
             "content": {
                 "application/json": {
-                    "example": [{
-                        "run_id": "550e8400-e29b-41d4-a716-446655440000",
-                        "benchmark": "mmlu",
-                        "model": "openai/gpt-4o",
-                        "status": "completed",
-                        "created_at": "2024-01-15T10:30:00Z",
-                        "finished_at": "2024-01-15T10:45:00Z",
-                        "primary_metric": 0.85,
-                        "primary_metric_name": "accuracy",
-                        "tags": ["baseline"]
-                    }]
+                    "example": {
+                        "runs": [{
+                            "run_id": "550e8400-e29b-41d4-a716-446655440000",
+                            "benchmark": "mmlu",
+                            "model": "openai/gpt-4o",
+                            "status": "completed",
+                            "created_at": "2024-01-15T10:30:00Z",
+                            "finished_at": "2024-01-15T10:45:00Z",
+                            "primary_metric": 0.85,
+                            "primary_metric_name": "accuracy",
+                            "tags": ["baseline"]
+                        }],
+                        "total": 150,
+                        "page": 1,
+                        "per_page": 50,
+                        "has_more": True
+                    }
                 }
             }
         }
     }
 )
 async def list_runs(
-    limit: int = 50,
+    page: int = 1,
+    per_page: int = 50,
     search: Optional[str] = None,
     status: Optional[str] = None,
     benchmark: Optional[str] = None,
     tag: Optional[str] = None,
+    started_after: Optional[str] = None,
+    started_before: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    List recent runs with optional filtering.
+    List recent runs with optional filtering and pagination.
     
     **Query parameters:**
-    - **limit**: Maximum number of runs to return (default: 50)
-    - **search**: Search in benchmark and model names
+    - **page**: Page number (default: 1, 1-indexed)
+    - **per_page**: Number of runs per page (default: 50, max: 100)
+    - **search**: Full-text search in benchmark, model, notes, and tags
     - **status**: Filter by status (`queued`, `running`, `completed`, `failed`, `canceled`)
     - **benchmark**: Filter by exact benchmark name
     - **tag**: Filter by tag
+    - **started_after**: Filter runs created after this ISO date (e.g., 2024-01-01)
+    - **started_before**: Filter runs created before this ISO date (e.g., 2024-12-31)
+    - **sort_by**: Sort field (`created_at`, `benchmark`, `model`)
+    - **sort_order**: Sort order (`asc`, `desc`)
     
     Returns runs owned by the current user if authenticated,
     or all public runs if not authenticated.
     
     Authentication is optional for this endpoint.
     """
+    # Validate pagination params
+    page = max(1, page)
+    per_page = min(max(1, per_page), 100)  # Max 100 per page
+    
     user_id = current_user.user_id if current_user else None
-    return await run_store.list_runs(
-        limit=limit,
+    runs, total = await run_store.list_runs_paginated(
+        page=page,
+        per_page=per_page,
         user_id=user_id,
         search=search,
         status=status,
         benchmark=benchmark,
         tag=tag,
+        started_after=started_after,
+        started_before=started_before,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+    
+    return RunListResponse(
+        runs=runs,
+        total=total,
+        page=page,
+        per_page=per_page,
+        has_more=(page * per_page) < total,
     )
 
 

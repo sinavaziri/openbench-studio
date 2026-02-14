@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api, RunFilters, RunSummary } from '../api/client';
@@ -21,6 +21,55 @@ const STATUS_OPTIONS = [
   { value: 'canceled', label: 'Canceled' },
 ];
 
+const SORT_OPTIONS = [
+  { value: 'created_at:desc', label: 'Newest First' },
+  { value: 'created_at:asc', label: 'Oldest First' },
+  { value: 'benchmark:asc', label: 'Benchmark (A-Z)' },
+  { value: 'benchmark:desc', label: 'Benchmark (Z-A)' },
+  { value: 'model:asc', label: 'Model (A-Z)' },
+  { value: 'model:desc', label: 'Model (Z-A)' },
+];
+
+const STORAGE_KEY = 'openbench_dashboard_filters';
+
+interface SavedFilters {
+  searchQuery: string;
+  statusFilter: string;
+  tagFilter: string;
+  benchmarkFilter: string;
+  sortOption: string;
+  startDate: string;
+  endDate: string;
+}
+
+function loadSavedFilters(): SavedFilters {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return {
+    searchQuery: '',
+    statusFilter: '',
+    tagFilter: '',
+    benchmarkFilter: '',
+    sortOption: 'created_at:desc',
+    startDate: '',
+    endDate: '',
+  };
+}
+
+function saveFilters(filters: SavedFilters): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -29,11 +78,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
+  // Load saved filters from localStorage
+  const savedFilters = useMemo(() => loadSavedFilters(), []);
+  
   // Filter state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [tagFilter, setTagFilter] = useState('');
-  const [benchmarkFilter, setBenchmarkFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState(savedFilters.searchQuery);
+  const [statusFilter, setStatusFilter] = useState(savedFilters.statusFilter);
+  const [tagFilter, setTagFilter] = useState(savedFilters.tagFilter);
+  const [benchmarkFilter, setBenchmarkFilter] = useState(savedFilters.benchmarkFilter);
+  const [sortOption, setSortOption] = useState(savedFilters.sortOption);
+  const [startDate, setStartDate] = useState(savedFilters.startDate);
+  const [endDate, setEndDate] = useState(savedFilters.endDate);
   const [showFilters, setShowFilters] = useState(false);
   
   // Selection mode state
@@ -47,6 +102,32 @@ export default function Dashboard() {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { isHelpOpen } = useKeyboardShortcuts();
+
+  // Calculate active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery.trim()) count++;
+    if (statusFilter) count++;
+    if (tagFilter) count++;
+    if (benchmarkFilter) count++;
+    if (startDate) count++;
+    if (endDate) count++;
+    if (sortOption !== 'created_at:desc') count++;
+    return count;
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter, startDate, endDate, sortOption]);
+
+  // Persist filters to localStorage
+  useEffect(() => {
+    saveFilters({
+      searchQuery,
+      statusFilter,
+      tagFilter,
+      benchmarkFilter,
+      sortOption,
+      startDate,
+      endDate,
+    });
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter, sortOption, startDate, endDate]);
 
   // WebSocket for live updates
   const handleRunStatus = useCallback((event: DashboardRunEvent) => {
@@ -80,14 +161,20 @@ export default function Dashboard() {
 
   const loadRuns = useCallback(async () => {
     try {
-      const filters: RunFilters = { limit: 100 };
+      const [sortBy, sortOrder] = sortOption.split(':') as [RunFilters['sort_by'], RunFilters['sort_order']];
+      
+      const filters: RunFilters = { per_page: 100 };
       if (searchQuery.trim()) filters.search = searchQuery.trim();
       if (statusFilter) filters.status = statusFilter;
       if (tagFilter) filters.tag = tagFilter;
       if (benchmarkFilter) filters.benchmark = benchmarkFilter;
+      if (startDate) filters.started_after = startDate;
+      if (endDate) filters.started_before = endDate + 'T23:59:59'; // Include full day
+      if (sortBy) filters.sort_by = sortBy;
+      if (sortOrder) filters.sort_order = sortOrder;
       
-      const data = await api.listRuns(filters);
-      setRuns(data);
+      const response = await api.listRuns(filters);
+      setRuns(response.runs);
       setError(null);
     } catch (err) {
       const parsed = parseError(err, 'loading-runs');
@@ -100,7 +187,7 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter]);
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter, sortOption, startDate, endDate]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -229,6 +316,16 @@ export default function Dashboard() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const handleClearAllFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+    setTagFilter('');
+    setBenchmarkFilter('');
+    setSortOption('created_at:desc');
+    setStartDate('');
+    setEndDate('');
   };
 
   const stats = {
@@ -531,7 +628,7 @@ export default function Dashboard() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search benchmarks and models..."
+                placeholder="Search benchmarks, models, notes, tags..."
                 className="w-full px-4 py-2.5 pl-10 pr-8 bg-background-secondary border border-border text-foreground text-[14px] placeholder-muted-foreground focus:border-border-secondary focus:outline-none transition-colors"
               />
               <svg
@@ -553,19 +650,41 @@ export default function Dashboard() {
               </span>
             </div>
 
+            {/* Sort Dropdown */}
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value)}
+              className="px-3 py-2.5 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 8px center',
+                backgroundSize: '16px',
+              }}
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
             {/* Filter Toggle */}
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`px-4 py-2.5 text-[13px] border transition-colors ${
-                showFilters || statusFilter || tagFilter || benchmarkFilter
+              className={`px-4 py-2.5 text-[13px] border transition-colors flex items-center gap-2 ${
+                showFilters || activeFilterCount > 0
                   ? 'border-border-secondary text-foreground bg-background-tertiary'
                   : 'border-border text-muted-foreground hover:text-foreground hover:border-border-secondary'
               }`}
             >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
               Filters
-              {(statusFilter || tagFilter || benchmarkFilter) && (
-                <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-accent text-accent-foreground rounded-sm">
-                  {[statusFilter, tagFilter, benchmarkFilter].filter(Boolean).length}
+              {activeFilterCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] bg-accent text-accent-foreground rounded-sm font-medium">
+                  {activeFilterCount}
                 </span>
               )}
             </button>
@@ -573,7 +692,25 @@ export default function Dashboard() {
 
           {/* Filter Dropdowns */}
           {showFilters && (
-            <div className="flex items-center gap-4 pt-2">
+            <div className="flex items-center gap-4 pt-2 flex-wrap">
+              {/* Date Range */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">From</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors"
+                />
+                <span className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">To</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors"
+                />
+              </div>
+
               {/* Benchmark Filter */}
               {allBenchmarks.length > 0 && (
                 <select
@@ -637,18 +774,16 @@ export default function Dashboard() {
                 </select>
               )}
 
-              {/* Clear Filters */}
-              {(statusFilter || tagFilter || benchmarkFilter || searchQuery) && (
+              {/* Clear All Filters */}
+              {activeFilterCount > 0 && (
                 <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setStatusFilter('');
-                    setTagFilter('');
-                    setBenchmarkFilter('');
-                  }}
-                  className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={handleClearAllFilters}
+                  className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                 >
-                  Clear all
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Clear all filters
                 </button>
               )}
             </div>
@@ -689,6 +824,7 @@ export default function Dashboard() {
           focusedIndex={focusedIndex}
           onFocusChange={setFocusedIndex}
           onSelectAll={handleSelectAll}
+          searchQuery={searchQuery}
         />
       </div>
     </Layout>

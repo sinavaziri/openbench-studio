@@ -12,7 +12,13 @@ from app.db.models import Run, RunConfig, RunCreate, RunStatus, RunSummary
 class RunStore:
     """Service for storing and retrieving runs from SQLite."""
 
-    async def create_run(self, run_create: RunCreate, user_id: Optional[str] = None) -> Run:
+    async def create_run(
+        self,
+        run_create: RunCreate,
+        user_id: Optional[str] = None,
+        template_id: Optional[str] = None,
+        template_name: Optional[str] = None,
+    ) -> Run:
         """Create a new run and store it in the database."""
         config = RunConfig(**run_create.model_dump())
         run = Run(
@@ -27,8 +33,9 @@ class RunStore:
                 """
                 INSERT INTO runs (
                     run_id, user_id, benchmark, model, status, created_at,
-                    started_at, finished_at, artifact_dir, exit_code, error, config_json, tags_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    started_at, finished_at, artifact_dir, exit_code, error, 
+                    config_json, tags_json, template_id, template_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -44,11 +51,14 @@ class RunStore:
                     run.error,
                     config.model_dump_json(),
                     json.dumps(run.tags),
+                    template_id,
+                    template_name,
                 ),
             )
             await db.commit()
         
-        return run
+        # Re-fetch to get all fields including template info
+        return await self.get_run(run.run_id) or run
 
     async def get_run(self, run_id: str, user_id: Optional[str] = None) -> Optional[Run]:
         """
@@ -80,6 +90,10 @@ class RunStore:
         status: Optional[str] = None,
         benchmark: Optional[str] = None,
         tag: Optional[str] = None,
+        started_after: Optional[str] = None,
+        started_before: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
     ) -> list[RunSummary]:
         """
         List recent runs with optional filtering.
@@ -87,10 +101,14 @@ class RunStore:
         Args:
             limit: Maximum number of runs to return
             user_id: Filter by user (also shows legacy runs with no owner)
-            search: Search in benchmark and model names
+            search: Full-text search in benchmark, model, notes, and tags
             status: Filter by status (queued, running, completed, failed, canceled)
             benchmark: Filter by exact benchmark name
             tag: Filter by tag (runs containing this tag)
+            started_after: Filter runs created after this ISO date
+            started_before: Filter runs created before this ISO date
+            sort_by: Sort field (created_at, benchmark, model)
+            sort_order: Sort order (asc, desc)
         """
         conditions = []
         params: list = []
@@ -100,10 +118,11 @@ class RunStore:
             conditions.append("(user_id = ? OR user_id IS NULL)")
             params.append(user_id)
         
-        # Search filter (benchmark or model)
+        # Full-text search filter (benchmark, model, notes, tags)
         if search:
-            conditions.append("(benchmark LIKE ? OR model LIKE ?)")
-            params.extend([f"%{search}%", f"%{search}%"])
+            conditions.append("(benchmark LIKE ? OR model LIKE ? OR notes LIKE ? OR tags_json LIKE ?)")
+            search_pattern = f"%{search}%"
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
         
         # Status filter
         if status:
@@ -120,14 +139,112 @@ class RunStore:
             conditions.append("tags_json LIKE ?")
             params.append(f'%"{tag}"%')
         
+        # Date range filters
+        if started_after:
+            conditions.append("created_at >= ?")
+            params.append(started_after)
+        
+        if started_before:
+            conditions.append("created_at <= ?")
+            params.append(started_before)
+        
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        query = f"SELECT * FROM runs WHERE {where_clause} ORDER BY created_at DESC LIMIT ?"
+        
+        # Determine sort order
+        valid_sort_fields = {"created_at", "benchmark", "model"}
+        sort_field = sort_by if sort_by in valid_sort_fields else "created_at"
+        order = "ASC" if sort_order == "asc" else "DESC"
+        
+        query = f"SELECT * FROM runs WHERE {where_clause} ORDER BY {sort_field} {order} LIMIT ?"
         params.append(limit)
         
         async with get_db() as db:
             cursor = await db.execute(query, params)
             rows = await cursor.fetchall()
             return [self._row_to_summary(row) for row in rows]
+
+    async def list_runs_paginated(
+        self,
+        page: int = 1,
+        per_page: int = 50,
+        user_id: Optional[str] = None,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        benchmark: Optional[str] = None,
+        tag: Optional[str] = None,
+        started_after: Optional[str] = None,
+        started_before: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+    ) -> tuple[list[RunSummary], int]:
+        """
+        List runs with pagination and optional filtering.
+        
+        Returns:
+            Tuple of (list of runs, total count)
+        """
+        conditions = []
+        params: list = []
+        
+        # User filter (always show legacy runs too)
+        if user_id is not None:
+            conditions.append("(user_id = ? OR user_id IS NULL)")
+            params.append(user_id)
+        
+        # Full-text search filter (benchmark, model, notes, tags)
+        if search:
+            conditions.append("(benchmark LIKE ? OR model LIKE ? OR notes LIKE ? OR tags_json LIKE ?)")
+            search_pattern = f"%{search}%"
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+        
+        # Status filter
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+        
+        # Benchmark filter
+        if benchmark:
+            conditions.append("benchmark = ?")
+            params.append(benchmark)
+        
+        # Tag filter (JSON contains)
+        if tag:
+            conditions.append("tags_json LIKE ?")
+            params.append(f'%"{tag}"%')
+        
+        # Date range filters
+        if started_after:
+            conditions.append("created_at >= ?")
+            params.append(started_after)
+        
+        if started_before:
+            conditions.append("created_at <= ?")
+            params.append(started_before)
+        
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        
+        # Determine sort order
+        valid_sort_fields = {"created_at", "benchmark", "model"}
+        sort_field = sort_by if sort_by in valid_sort_fields else "created_at"
+        order = "ASC" if sort_order == "asc" else "DESC"
+        
+        # Calculate offset
+        offset = (page - 1) * per_page
+        
+        async with get_db() as db:
+            # Get total count
+            count_query = f"SELECT COUNT(*) as count FROM runs WHERE {where_clause}"
+            cursor = await db.execute(count_query, params[:-0] if not params else params.copy())
+            count_row = await cursor.fetchone()
+            total = count_row["count"] if count_row else 0
+            
+            # Get paginated results
+            query = f"SELECT * FROM runs WHERE {where_clause} ORDER BY {sort_field} {order} LIMIT ? OFFSET ?"
+            params.extend([per_page, offset])
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            
+            return [self._row_to_summary(row) for row in rows], total
 
     async def update_run(
         self,
@@ -331,10 +448,20 @@ class RunStore:
         if row["config_json"]:
             config = RunConfig(**json.loads(row["config_json"]))
         
-        # Safely get notes column (may not exist in older databases)
+        # Safely get optional columns (may not exist in older databases)
         notes = None
+        template_id = None
+        template_name = None
         try:
             notes = row["notes"]
+        except (KeyError, IndexError):
+            pass
+        try:
+            template_id = row["template_id"]
+        except (KeyError, IndexError):
+            pass
+        try:
+            template_name = row["template_name"]
         except (KeyError, IndexError):
             pass
         
@@ -355,14 +482,21 @@ class RunStore:
             primary_metric_name=row["primary_metric_name"],
             tags=self._parse_tags(row),
             notes=notes,
+            template_id=template_id,
+            template_name=template_name,
         )
 
     def _row_to_summary(self, row) -> RunSummary:
         """Convert a database row to a RunSummary model."""
-        # Safely get notes column (may not exist in older databases)
+        # Safely get optional columns (may not exist in older databases)
         notes = None
+        template_name = None
         try:
             notes = row["notes"]
+        except (KeyError, IndexError):
+            pass
+        try:
+            template_name = row["template_name"]
         except (KeyError, IndexError):
             pass
         
@@ -377,6 +511,7 @@ class RunStore:
             primary_metric_name=row["primary_metric_name"],
             tags=self._parse_tags(row),
             notes=notes,
+            template_name=template_name,
         )
 
 
