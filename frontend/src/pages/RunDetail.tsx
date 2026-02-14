@@ -511,6 +511,27 @@ export default function RunDetail() {
                 </p>
               </div>
             )}
+            {run.total_tokens !== null && run.total_tokens !== undefined && run.total_tokens > 0 && (
+              <div>
+                <p className="text-[12px] text-muted-foreground mb-1">Tokens Used</p>
+                <p className="text-[14px] text-foreground tabular-nums">
+                  {run.total_tokens.toLocaleString()}
+                  {run.input_tokens && run.output_tokens && (
+                    <span className="text-[11px] text-muted-foreground ml-1">
+                      ({run.input_tokens.toLocaleString()} in / {run.output_tokens.toLocaleString()} out)
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+            {run.estimated_cost !== null && run.estimated_cost !== undefined && run.estimated_cost > 0 && (
+              <div>
+                <p className="text-[12px] text-muted-foreground mb-1">Estimated Cost</p>
+                <p className="text-[14px] text-foreground tabular-nums">
+                  ${run.estimated_cost < 0.01 ? run.estimated_cost.toFixed(4) : run.estimated_cost.toFixed(2)}
+                </p>
+              </div>
+            )}
           </div>
           
           {/* Action Buttons */}

@@ -701,7 +701,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Search and Filters */}
+        {/* Search and Filters - only show on runs tab */}
+        {activeTab === 'runs' && (
         <div className="mb-6 space-y-4">
           <div className="flex items-center gap-4">
             {/* Search Input */}
@@ -872,9 +873,10 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
         
-        {/* Selection Info */}
-        {selectionMode && (
+        {/* Selection Info - only show on runs tab */}
+        {activeTab === 'runs' && selectionMode && (
           <div className="mb-4 py-3 px-4 bg-background-tertiary border border-border text-[13px] text-muted flex items-center justify-between">
             <span>
               {selectedIds.size === 0 
@@ -938,5 +940,163 @@ export default function Dashboard() {
         );
       })()}
     </Layout>
+  );
+}
+
+// =============================================================================
+// Scheduled Runs Table Component
+// =============================================================================
+
+function ScheduledRunsTable({ 
+  runs, 
+  loading, 
+  onCancel,
+  onUpdate,
+}: { 
+  runs: RunSummary[];
+  loading: boolean;
+  onCancel: (runId: string) => void;
+  onUpdate: (runId: string, scheduledFor: string) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  
+  if (loading) {
+    return (
+      <div className="py-12 text-center text-muted-foreground">
+        Loading scheduled runs...
+      </div>
+    );
+  }
+  
+  if (runs.length === 0) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-[14px] text-muted-foreground mb-4">
+          No scheduled runs
+        </p>
+        <p className="text-[13px] text-muted-foreground">
+          Schedule a run from the New Run page to see it here.
+        </p>
+      </div>
+    );
+  }
+  
+  const startEdit = (run: RunSummary) => {
+    if (run.scheduled_for) {
+      const date = new Date(run.scheduled_for);
+      setEditDate(date.toISOString().split('T')[0]);
+      setEditTime(date.toTimeString().slice(0, 5));
+    }
+    setEditingId(run.run_id);
+  };
+  
+  const saveEdit = (runId: string) => {
+    if (editDate && editTime) {
+      const scheduledFor = new Date(`${editDate}T${editTime}`).toISOString();
+      onUpdate(runId, scheduledFor);
+    }
+    setEditingId(null);
+  };
+  
+  const formatCountdown = (scheduledFor: string) => {
+    const now = new Date();
+    const scheduled = new Date(scheduledFor);
+    const diff = scheduled.getTime() - now.getTime();
+    
+    if (diff < 0) return 'Starting soon...';
+    
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `in ${days} day${days > 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+      return `in ${hours}h ${minutes}m`;
+    } else {
+      return `in ${minutes}m`;
+    }
+  };
+  
+  return (
+    <div className="space-y-3">
+      {runs.map((run) => (
+        <div 
+          key={run.run_id}
+          className="p-4 border border-border bg-background-secondary hover:bg-background-tertiary transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-[15px] text-foreground font-medium">
+                  {run.benchmark}
+                </span>
+                <span className="text-[13px] text-muted-foreground">
+                  {run.model}
+                </span>
+              </div>
+              
+              {editingId === run.run_id ? (
+                <div className="flex items-center gap-2 mt-3">
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="px-2 py-1 bg-background border border-border text-foreground text-[13px]"
+                  />
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className="px-2 py-1 bg-background border border-border text-foreground text-[13px]"
+                  />
+                  <button
+                    onClick={() => saveEdit(run.run_id)}
+                    className="px-3 py-1 text-[12px] text-accent-foreground bg-accent hover:opacity-90"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="px-3 py-1 text-[12px] text-muted-foreground hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-4 text-[13px]">
+                  <span className="text-muted-foreground">
+                    📅 {run.scheduled_for && new Date(run.scheduled_for).toLocaleString()}
+                  </span>
+                  <span className="text-accent font-medium">
+                    {run.scheduled_for && formatCountdown(run.scheduled_for)}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            {editingId !== run.run_id && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => startEdit(run)}
+                  className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground border border-border hover:border-border-secondary transition-colors"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => onCancel(run.run_id)}
+                  className="px-3 py-1.5 text-[12px] text-error-foreground bg-error-bg border border-error-border hover:bg-error/10 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

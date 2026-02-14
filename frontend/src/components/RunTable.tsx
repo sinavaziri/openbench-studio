@@ -341,8 +341,8 @@ export default function RunTable({
   }
 
   const gridCols = selectable
-    ? 'grid-cols-[40px_160px_1fr_90px_100px_120px_80px]'
-    : 'grid-cols-[180px_1fr_90px_100px_120px_80px]';
+    ? 'grid-cols-[40px_160px_1fr_90px_70px_100px_120px_80px]'
+    : 'grid-cols-[180px_1fr_90px_70px_100px_120px_80px]';
 
   return (
     <>
@@ -436,6 +436,7 @@ export default function RunTable({
           <div>Benchmark</div>
           <div>Model</div>
           <div>Result</div>
+          <div>Cost</div>
           <div>Tags</div>
           <div>Status</div>
           <div className="text-right">Time</div>
@@ -503,6 +504,15 @@ export default function RunTable({
                     <span className="text-[14px] text-muted-foreground">—</span>
                   )}
                 </div>
+                <div>
+                  {run.estimated_cost !== undefined && run.estimated_cost !== null && run.estimated_cost > 0 ? (
+                    <span className="text-[13px] text-muted-foreground tabular-nums">
+                      ${run.estimated_cost < 0.01 ? run.estimated_cost.toFixed(3) : run.estimated_cost.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-[14px] text-muted-foreground">—</span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1 flex-wrap">
                   {displayTags.map((tag) => (
                     <span
@@ -554,6 +564,15 @@ export default function RunTable({
                 {isCompleted && run.primary_metric !== undefined && run.primary_metric !== null ? (
                   <span className="text-[15px] text-foreground tabular-nums font-light">
                     {formatMetric(run.primary_metric, run.primary_metric_name)}
+                  </span>
+                ) : (
+                  <span className="text-[14px] text-muted-foreground">—</span>
+                )}
+              </div>
+              <div>
+                {run.estimated_cost !== undefined && run.estimated_cost !== null && run.estimated_cost > 0 ? (
+                  <span className="text-[13px] text-muted-foreground tabular-nums">
+                    ${run.estimated_cost < 0.01 ? run.estimated_cost.toFixed(3) : run.estimated_cost.toFixed(2)}
                   </span>
                 ) : (
                   <span className="text-[14px] text-muted-foreground">—</span>
