@@ -331,14 +331,14 @@ export default function RunDetail() {
   if (loading) {
     return (
       <Layout>
-        <div className="space-y-8">
-          <div className="h-8 w-64 bg-border rounded animate-pulse" />
-          <div className="grid grid-cols-4 gap-8">
+        <div className="space-y-6 sm:space-y-8">
+          <div className="h-8 w-48 sm:w-64 bg-border rounded animate-pulse" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-8">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-20 bg-border rounded animate-pulse" />
+              <div key={i} className="h-16 sm:h-20 bg-border rounded animate-pulse" />
             ))}
           </div>
-          <div className="h-64 bg-border rounded animate-pulse" />
+          <div className="h-48 sm:h-64 bg-border rounded animate-pulse" />
         </div>
       </Layout>
     );
@@ -366,7 +366,7 @@ export default function RunDetail() {
         >
           <Link 
             to="/history" 
-            className="mt-4 inline-block text-[14px] text-muted-foreground hover:text-foreground transition-colors"
+            className="mt-4 inline-block text-[14px] text-muted-foreground hover:text-foreground transition-colors min-h-[44px] flex items-center"
           >
             ← Back to History
           </Link>
@@ -392,38 +392,46 @@ export default function RunDetail() {
   return (
     <Layout>
       {/* Header */}
-      <div className="mb-12">
+      <div className="mb-8 sm:mb-12">
         <Link 
           to="/history"
-          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-4 inline-block"
+          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-4 inline-flex items-center min-h-[44px]"
         >
           ← Back
         </Link>
-        <div className="flex items-center gap-4 mb-2">
-          <h1 className="text-[28px] text-foreground tracking-tight">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-2">
+          <h1 className="text-[22px] sm:text-[28px] text-foreground tracking-tight">
             {run.benchmark}
           </h1>
-          <span className="text-[13px] text-muted flex items-center">
-            {run.status === 'running' && (
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground mr-2 animate-pulse" />
+          <div className="flex items-center gap-3">
+            <span className="text-[13px] text-muted flex items-center">
+              {run.status === 'running' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-foreground mr-2 animate-pulse" />
+              )}
+              {statusLabels[run.status]}
+            </span>
+            {isActiveRun && (
+              <ConnectionStatus 
+                status={wsStatus} 
+                reconnectAttempts={reconnectAttempts}
+              />
             )}
-            {statusLabels[run.status]}
-          </span>
-          {isActiveRun && (
-            <ConnectionStatus 
-              status={wsStatus} 
-              reconnectAttempts={reconnectAttempts}
-            />
-          )}
+          </div>
         </div>
-        <p className="text-[15px] text-muted-foreground">
+        <p className="text-[14px] sm:text-[15px] text-muted-foreground break-all">
           {run.model}
         </p>
+        {run.template_name && (
+          <p className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1.5">
+            <span>📋</span>
+            <span>From template: {run.template_name}</span>
+          </p>
+        )}
       </div>
 
       {/* Progress Bar */}
       {progress && isActive && (
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[12px] text-muted-foreground">Progress</span>
             <span className="text-[12px] text-muted">
@@ -444,13 +452,14 @@ export default function RunDetail() {
         </div>
       )}
 
-      {/* Info Grid */}
-      <div className="grid grid-cols-[280px_1fr] gap-16 mb-12">
+      {/* Info Grid - Responsive: stacked on mobile, side-by-side on desktop */}
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 lg:gap-16 mb-8 sm:mb-12">
+        {/* Left Column - Details */}
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
             Details
           </p>
-          <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-1 gap-4">
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">Run ID</p>
               <p className="text-[14px] text-foreground font-mono">{run.run_id.slice(0, 8)}</p>
@@ -482,11 +491,11 @@ export default function RunDetail() {
           </div>
           
           {/* Action Buttons */}
-          <div className="mt-8 space-y-3">
+          <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row lg:flex-col gap-3">
             {isActive && (
               <button
                 onClick={handleCancel}
-                className="w-full px-4 py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors"
+                className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
               >
                 Cancel Run
               </button>
@@ -495,7 +504,7 @@ export default function RunDetail() {
             {run.config && !isActive && (
               <button
                 onClick={handleRunAgain}
-                className="w-full px-4 py-2 text-[13px] text-foreground bg-background-tertiary border border-border-secondary hover:bg-border transition-colors"
+                className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-foreground bg-background-tertiary border border-border-secondary hover:bg-border transition-colors min-h-[44px]"
               >
                 Run Again →
               </button>
@@ -506,7 +515,7 @@ export default function RunDetail() {
                 {!showDeleteConfirm ? (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="w-full px-4 py-2 text-[13px] text-muted-foreground border border-border hover:border-error hover:text-error transition-colors"
+                    className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-muted-foreground border border-border hover:border-error hover:text-error transition-colors min-h-[44px]"
                   >
                     Delete Run
                   </button>
@@ -519,13 +528,13 @@ export default function RunDetail() {
                       <button
                         onClick={handleDelete}
                         disabled={deleting}
-                        className="flex-1 px-3 py-1.5 text-[12px] text-accent-foreground bg-error hover:opacity-90 disabled:opacity-50 transition-colors"
+                        className="flex-1 px-3 py-2 text-[12px] text-accent-foreground bg-error hover:opacity-90 disabled:opacity-50 transition-colors min-h-[44px]"
                       >
                         {deleting ? 'Deleting...' : 'Delete'}
                       </button>
                       <button
                         onClick={() => setShowDeleteConfirm(false)}
-                        className="flex-1 px-3 py-1.5 text-[12px] text-muted border border-border-secondary hover:text-foreground transition-colors"
+                        className="flex-1 px-3 py-2 text-[12px] text-muted border border-border-secondary hover:text-foreground transition-colors min-h-[44px]"
                       >
                         Cancel
                       </button>
@@ -537,14 +546,15 @@ export default function RunDetail() {
           </div>
         </div>
         
+        {/* Right Column - Configuration, Tags, Notes */}
         <div>
           {/* Configuration */}
           {run.config && Object.keys(run.config).length > 0 && (
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Configuration
               </p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {Object.entries(run.config)
                   .filter(([key]) => key !== 'schema_version')
                   .map(([key, value]) => (
@@ -553,7 +563,7 @@ export default function RunDetail() {
                       <p className="text-[12px] text-muted-foreground mb-1">
                         {key.replace(/_/g, ' ')}
                       </p>
-                      <p className="text-[14px] text-foreground">{String(value)}</p>
+                      <p className="text-[14px] text-foreground break-all">{String(value)}</p>
                     </div>
                   )
                 ))}
@@ -563,20 +573,20 @@ export default function RunDetail() {
 
           {/* Command - for reproducibility */}
           {run.command && (
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Command
-                <span className="ml-2 text-muted-foreground normal-case tracking-normal">
+                <span className="ml-2 text-muted-foreground normal-case tracking-normal hidden sm:inline">
                   (for reproducibility)
                 </span>
               </p>
               <div className="relative group">
-                <pre className="px-4 py-3 bg-background-secondary border border-border text-[13px] text-muted font-mono overflow-x-auto">
+                <pre className="px-3 sm:px-4 py-3 bg-background-secondary border border-border text-[12px] sm:text-[13px] text-muted font-mono overflow-x-auto">
                   {run.command}
                 </pre>
                 <button
                   onClick={() => navigator.clipboard.writeText(run.command!)}
-                  className="absolute top-2 right-2 px-2 py-1 text-[11px] text-muted-foreground border border-border-secondary bg-background-tertiary opacity-0 group-hover:opacity-100 hover:text-foreground hover:border-muted-foreground transition-all"
+                  className="absolute top-2 right-2 px-2 py-1.5 text-[11px] text-muted-foreground border border-border-secondary bg-background-tertiary opacity-100 sm:opacity-0 sm:group-hover:opacity-100 hover:text-foreground hover:border-muted-foreground transition-all min-h-[36px] min-w-[44px]"
                 >
                   Copy
                 </button>
@@ -586,7 +596,7 @@ export default function RunDetail() {
 
           {/* Error Message */}
           {run.error && (
-            <div className="mb-8">
+            <div className="mb-6 sm:mb-8">
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Error
               </p>
@@ -597,7 +607,7 @@ export default function RunDetail() {
           )}
 
           {/* Tags */}
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
                 Tags
@@ -605,7 +615,7 @@ export default function RunDetail() {
               {isAuthenticated && !editingTags && (
                 <button
                   onClick={() => setEditingTags(true)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors min-h-[44px] flex items-center px-2"
                 >
                   Edit
                 </button>
@@ -616,7 +626,7 @@ export default function RunDetail() {
               {(run.tags || []).map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-muted border border-border-secondary"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-muted border border-border-secondary"
                   style={{ backgroundColor: getTagColor(tag) }}
                 >
                   {tag}
@@ -624,7 +634,7 @@ export default function RunDetail() {
                     <button
                       onClick={() => handleRemoveTag(tag)}
                       disabled={savingTags}
-                      className="text-muted-foreground hover:text-error transition-colors disabled:opacity-50"
+                      className="text-muted-foreground hover:text-error transition-colors disabled:opacity-50 min-w-[24px] min-h-[24px] flex items-center justify-center"
                     >
                       ×
                     </button>
@@ -637,8 +647,8 @@ export default function RunDetail() {
               )}
               
               {editingTags && (
-                <div className="relative flex items-center gap-2">
-                  <div className="relative">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                  <div className="relative flex-1 sm:flex-none">
                     <input
                       type="text"
                       value={newTag}
@@ -661,7 +671,7 @@ export default function RunDetail() {
                         }
                       }}
                       placeholder="Add tag..."
-                      className="px-2 py-1 w-32 text-[12px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none"
+                      className="px-3 py-2 w-full sm:w-32 text-[12px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none min-h-[44px]"
                     />
                     {/* Tag suggestions dropdown */}
                     {showTagSuggestions && filteredTagSuggestions.length > 0 && (
@@ -674,7 +684,7 @@ export default function RunDetail() {
                               handleAddTag();
                               setShowTagSuggestions(false);
                             }}
-                            className="w-full px-2 py-1.5 text-left text-[12px] text-muted hover:bg-background-tertiary hover:text-foreground transition-colors"
+                            className="w-full px-3 py-2.5 text-left text-[12px] text-muted hover:bg-background-tertiary hover:text-foreground transition-colors min-h-[44px]"
                           >
                             {tag}
                           </button>
@@ -682,30 +692,32 @@ export default function RunDetail() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={handleAddTag}
-                    disabled={!newTag.trim() || savingTags}
-                    className="px-2 py-1 text-[11px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors"
-                  >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditingTags(false);
-                      setNewTag('');
-                      setShowTagSuggestions(false);
-                    }}
-                    className="px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Done
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleAddTag}
+                      disabled={!newTag.trim() || savingTags}
+                      className="flex-1 sm:flex-none px-3 py-2 text-[11px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors min-h-[44px] min-w-[44px]"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingTags(false);
+                        setNewTag('');
+                        setShowTagSuggestions(false);
+                      }}
+                      className="flex-1 sm:flex-none px-3 py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors min-h-[44px] min-w-[44px]"
+                    >
+                      Done
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
           {/* Notes */}
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="flex items-center justify-between mb-4">
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
                 Notes
@@ -713,7 +725,7 @@ export default function RunDetail() {
               {isAuthenticated && !editingNotes && (
                 <button
                   onClick={() => setEditingNotes(true)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors min-h-[44px] flex items-center px-2"
                 >
                   {run.notes ? 'Edit' : 'Add'}
                 </button>
@@ -727,19 +739,19 @@ export default function RunDetail() {
                   onChange={(e) => setNotesValue(e.target.value)}
                   placeholder="Add notes about this run..."
                   rows={4}
-                  className="w-full px-3 py-2 text-[13px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none resize-none"
+                  className="w-full px-3 py-3 text-[13px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none resize-none"
                 />
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleSaveNotes}
                     disabled={savingNotes}
-                    className="px-3 py-1.5 text-[12px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 text-[12px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors min-h-[44px]"
                   >
                     {savingNotes ? 'Saving...' : 'Save'}
                   </button>
                   <button
                     onClick={handleCancelNotesEdit}
-                    className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                    className="px-4 py-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
                   >
                     Cancel
                   </button>
@@ -760,17 +772,22 @@ export default function RunDetail() {
 
       {/* Results Section */}
       {run.status === 'completed' && (
-        <div className="mb-12">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
+        <div className="mb-8 sm:mb-12">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4 sm:mb-6">
             Results
           </p>
           
           {run.summary && (run.summary.primary_metric || run.summary.metrics.length > 0) ? (
-            <div className="space-y-8">
-              <MetricCards
-                primaryMetric={run.summary.primary_metric}
-                metrics={run.summary.metrics}
-              />
+            <div className="space-y-6 sm:space-y-8">
+              {/* Scrollable metrics container on mobile */}
+              <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                <div className="min-w-fit">
+                  <MetricCards
+                    primaryMetric={run.summary.primary_metric}
+                    metrics={run.summary.metrics}
+                  />
+                </div>
+              </div>
               
               {run.summary.breakdowns.length > 0 && (
                 <BreakdownChart breakdowns={run.summary.breakdowns} />
@@ -792,7 +809,7 @@ export default function RunDetail() {
               )}
             </div>
           ) : (
-            <div className="bg-background-secondary border border-border px-6 py-8 text-center">
+            <div className="bg-background-secondary border border-border px-4 sm:px-6 py-6 sm:py-8 text-center">
               <p className="text-[14px] text-muted-foreground">
                 No structured summary available
               </p>
@@ -805,7 +822,7 @@ export default function RunDetail() {
       )}
 
       {/* Logs */}
-      <div className="space-y-8">
+      <div className="space-y-6 sm:space-y-8">
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
             Output
@@ -832,7 +849,7 @@ export default function RunDetail() {
 
       {/* Artifacts */}
       {run.artifacts && run.artifacts.length > 0 && (
-        <div className="mt-12">
+        <div className="mt-8 sm:mt-12">
           <div className="flex items-center justify-between mb-4">
             <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
               Artifacts ({run.artifacts.length})
@@ -850,12 +867,13 @@ export default function RunDetail() {
                     document.body.removeChild(link);
                   });
                 }}
-                className="px-3 py-1.5 text-[11px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+                className="px-3 py-2 text-[11px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors flex items-center gap-2 min-h-[44px]"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                Download All
+                <span className="hidden sm:inline">Download All</span>
+                <span className="sm:hidden">All</span>
               </button>
             )}
           </div>
@@ -873,16 +891,16 @@ export default function RunDetail() {
                     {regularArtifacts.map((artifact) => (
                       <div
                         key={artifact}
-                        className="flex items-center justify-between gap-3 px-4 py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
+                        className="flex items-center justify-between gap-3 px-3 sm:px-4 py-3 sm:py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
                       >
                         <button
                           onClick={() => setPreviewArtifact(artifact)}
-                          className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                          className="flex items-center gap-3 flex-1 min-w-0 text-left min-h-[44px]"
                         >
                           <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
+                          <span className="text-[13px] sm:text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
                             {artifact}
                           </span>
                         </button>
@@ -897,7 +915,7 @@ export default function RunDetail() {
                               link.click();
                               document.body.removeChild(link);
                             }}
-                            className="p-1.5 text-muted-foreground hover:text-muted transition-colors"
+                            className="p-2 text-muted-foreground hover:text-muted transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                             title="Download"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -925,15 +943,15 @@ export default function RunDetail() {
                             <Link
                               key={artifact}
                               to={`/runs/${id}/eval/${artifact}`}
-                              className="flex items-center gap-3 px-4 py-2 bg-background-secondary border border-border hover:border-border-secondary transition-colors group"
+                              className="flex items-center gap-3 px-3 sm:px-4 py-3 sm:py-2 bg-background-secondary border border-border hover:border-border-secondary transition-colors group min-h-[44px]"
                             >
-                              <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
-                              <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors flex-1">
+                              <span className="text-[13px] sm:text-[14px] text-muted group-hover:text-foreground font-mono transition-colors flex-1 truncate">
                                 {artifact.replace('logs/', '')}
                               </span>
-                              <span className="text-[11px] text-muted-foreground group-hover:text-muted">
+                              <span className="text-[11px] text-muted-foreground group-hover:text-muted hidden sm:inline">
                                 View Results →
                               </span>
                             </Link>
@@ -943,16 +961,16 @@ export default function RunDetail() {
                         return (
                           <div
                             key={artifact}
-                            className="flex items-center justify-between gap-3 px-4 py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
+                            className="flex items-center justify-between gap-3 px-3 sm:px-4 py-3 sm:py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
                           >
                             <button
                               onClick={() => setPreviewArtifact(artifact)}
-                              className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                              className="flex items-center gap-3 flex-1 min-w-0 text-left min-h-[44px]"
                             >
                               <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
+                              <span className="text-[13px] sm:text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
                                 {artifact.replace('logs/', '')}
                               </span>
                             </button>
@@ -967,7 +985,7 @@ export default function RunDetail() {
                                   link.click();
                                   document.body.removeChild(link);
                                 }}
-                                className="p-1.5 text-muted-foreground hover:text-muted transition-colors"
+                                className="p-2 text-muted-foreground hover:text-muted transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                                 title="Download"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -980,7 +998,8 @@ export default function RunDetail() {
                       })}
                     </div>
                     <p className="text-[12px] text-muted-foreground mt-3">
-                      💡 Tip: Click .eval files to view detailed results in the browser
+                      💡 Tip: <span className="hidden sm:inline">Click .eval files to view detailed results in the browser</span>
+                      <span className="sm:hidden">Tap .eval files to view results</span>
                     </p>
                   </div>
                 )}

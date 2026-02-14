@@ -298,7 +298,9 @@ class Run(BaseModel):
                 "exit_code": 0,
                 "primary_metric": 0.85,
                 "primary_metric_name": "accuracy",
-                "tags": ["gpt-4", "baseline"]
+                "tags": ["gpt-4", "baseline"],
+                "template_id": None,
+                "template_name": None
             }
         }
     )
@@ -319,6 +321,8 @@ class Run(BaseModel):
     primary_metric_name: Optional[str] = Field(None, description="Name of the primary metric")
     tags: list[str] = Field(default_factory=list, description="User-defined tags")
     notes: Optional[str] = Field(None, description="User notes for the run")
+    template_id: Optional[str] = Field(None, description="ID of template used to create this run")
+    template_name: Optional[str] = Field(None, description="Name of template used (preserved even if template deleted)")
 
 
 class RunCreate(BaseModel):
@@ -403,7 +407,8 @@ class RunSummary(BaseModel):
                 "finished_at": "2024-01-15T10:45:00Z",
                 "primary_metric": 0.85,
                 "primary_metric_name": "accuracy",
-                "tags": ["baseline"]
+                "tags": ["baseline"],
+                "template_name": None
             }
         }
     )
@@ -418,6 +423,39 @@ class RunSummary(BaseModel):
     primary_metric_name: Optional[str] = Field(None, description="Name of the primary metric")
     tags: list[str] = Field(default_factory=list, description="User-defined tags")
     notes: Optional[str] = Field(None, description="User notes for the run")
+    template_name: Optional[str] = Field(None, description="Name of template used (if created from template)")
+
+
+class RunListResponse(BaseModel):
+    """Paginated response for listing runs."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "runs": [{
+                    "run_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "benchmark": "mmlu",
+                    "model": "openai/gpt-4o",
+                    "status": "completed",
+                    "created_at": "2024-01-15T10:30:00Z",
+                    "finished_at": "2024-01-15T10:45:00Z",
+                    "primary_metric": 0.85,
+                    "primary_metric_name": "accuracy",
+                    "tags": ["baseline"]
+                }],
+                "total": 150,
+                "page": 1,
+                "per_page": 50,
+                "has_more": True
+            }
+        }
+    )
+    
+    runs: list[RunSummary] = Field(description="List of run summaries")
+    total: int = Field(description="Total number of runs matching the query")
+    page: int = Field(description="Current page number (1-indexed)")
+    per_page: int = Field(description="Number of runs per page")
+    has_more: bool = Field(description="Whether there are more pages available")
 
 
 class RunTagsUpdate(BaseModel):
@@ -582,6 +620,132 @@ class HealthResponse(BaseModel):
     )
     
     status: str = Field(description="Health status")
+
+
+# =============================================================================
+# Run Template Models
+# =============================================================================
+
+class RunTemplate(BaseModel):
+    """A saved benchmark run configuration template."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "template_id": "550e8400-e29b-41d4-a716-446655440000",
+                "user_id": "660e8400-e29b-41d4-a716-446655440001",
+                "name": "GPT-4o MMLU Quick Test",
+                "benchmark": "mmlu",
+                "model": "openai/gpt-4o",
+                "config": {
+                    "limit": 10,
+                    "temperature": 0.0
+                },
+                "created_at": "2024-01-15T10:30:00Z",
+                "updated_at": "2024-01-15T10:30:00Z"
+            }
+        }
+    )
+    
+    template_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique template identifier")
+    user_id: str = Field(description="Owner's user ID")
+    name: str = Field(description="Template display name")
+    benchmark: str = Field(description="Benchmark name")
+    model: str = Field(description="Model identifier")
+    config: Optional[RunConfig] = Field(None, description="Full run configuration")
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="When the template was created")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="When the template was last updated")
+
+
+class RunTemplateCreate(BaseModel):
+    """Request body for creating a run template."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "GPT-4o MMLU Quick Test",
+                "benchmark": "mmlu",
+                "model": "openai/gpt-4o",
+                "limit": 10,
+                "temperature": 0.0
+            }
+        }
+    )
+    
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="Template display name",
+        examples=["GPT-4o MMLU Quick Test", "Claude Production Baseline"]
+    )
+    benchmark: str = Field(
+        description="Name of the benchmark",
+        examples=["mmlu", "gsm8k", "humaneval"]
+    )
+    model: str = Field(
+        description="Model identifier in provider/model format",
+        examples=["openai/gpt-4o", "anthropic/claude-3-5-sonnet"]
+    )
+    limit: Optional[int] = Field(None, ge=1, description="Limit number of samples")
+    temperature: Optional[float] = Field(None, ge=0, le=2, description="Sampling temperature")
+    top_p: Optional[float] = Field(None, ge=0, le=1, description="Nucleus sampling probability")
+    max_tokens: Optional[int] = Field(None, ge=1, description="Maximum tokens in response")
+    timeout: Optional[int] = Field(None, ge=1, description="Request timeout in seconds")
+    epochs: Optional[int] = Field(None, ge=1, description="Number of evaluation epochs")
+    max_connections: Optional[int] = Field(None, ge=1, description="Maximum concurrent connections")
+
+
+class RunTemplateUpdate(BaseModel):
+    """Request body for updating a run template (rename)."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "GPT-4o MMLU Baseline v2"
+            }
+        }
+    )
+    
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        description="New template name",
+        examples=["GPT-4o MMLU Baseline v2"]
+    )
+
+
+class RunTemplateSummary(BaseModel):
+    """Summary of a template for list views."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "template_id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "GPT-4o MMLU Quick Test",
+                "benchmark": "mmlu",
+                "model": "openai/gpt-4o",
+                "created_at": "2024-01-15T10:30:00Z"
+            }
+        }
+    )
+    
+    template_id: str = Field(description="Unique template identifier")
+    name: str = Field(description="Template display name")
+    benchmark: str = Field(description="Benchmark name")
+    model: str = Field(description="Model identifier")
+    created_at: datetime = Field(description="When the template was created")
+
+
+class RunFromTemplateResponse(BaseModel):
+    """Response when creating a run from a template."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"run_id": "550e8400-e29b-41d4-a716-446655440000"}
+        }
+    )
+    
+    run_id: str = Field(description="ID of the created run")
 
 
 class ProviderInfo(BaseModel):

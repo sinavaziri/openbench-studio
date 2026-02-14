@@ -39,6 +39,7 @@ class User(Base):
     # Relationships
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     runs = relationship("Run", back_populates="user")
+    templates = relationship("RunTemplate", back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -83,6 +84,27 @@ class Run(Base):
     primary_metric_name = Column(String, nullable=True)
     tags_json = Column(Text, nullable=True, default="[]")
     notes = Column(Text, nullable=True)  # User notes for the run
+    template_id = Column(String, ForeignKey("run_templates.template_id"), nullable=True, index=True)
+    template_name = Column(String, nullable=True)  # Denormalized for display even if template deleted
 
     # Relationships
     user = relationship("User", back_populates="runs")
+    template = relationship("RunTemplate", back_populates="runs")
+
+
+class RunTemplate(Base):
+    """A saved benchmark run configuration template."""
+    __tablename__ = "run_templates"
+
+    template_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    benchmark = Column(String, nullable=False)
+    model = Column(String, nullable=False)
+    config_json = Column(Text, nullable=True)  # Full RunConfig as JSON
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="templates")
+    runs = relationship("Run", back_populates="template")
