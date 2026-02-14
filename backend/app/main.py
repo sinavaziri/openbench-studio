@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from app.api.routes import api_keys, auth, benchmarks, health, runs, ws
+from app.api.routes import api_keys, auth, benchmarks, health, runs, settings, templates, ws
 from app.core.config import API_PREFIX
 from app.db.migrations import run_migrations
 
@@ -30,12 +30,20 @@ tags_metadata = [
         "description": "Manage API keys for LLM providers. Keys are encrypted at rest and used for benchmark runs.",
     },
     {
+        "name": "settings",
+        "description": "Import and export user settings. Backup and restore API keys with optional encryption.",
+    },
+    {
         "name": "benchmarks",
         "description": "Discover and explore available benchmarks. Browse the catalog of evaluation suites.",
     },
     {
         "name": "runs",
         "description": "Create, monitor, and manage benchmark runs. Execute evaluations and track results.",
+    },
+    {
+        "name": "templates",
+        "description": "Save and manage run templates. Reuse benchmark configurations for quick runs.",
     },
 ]
 
@@ -167,6 +175,8 @@ app.add_middleware(
 app.include_router(health.router, prefix=API_PREFIX, tags=["health"])
 app.include_router(auth.router, prefix=API_PREFIX, tags=["auth"])
 app.include_router(api_keys.router, prefix=API_PREFIX, tags=["api-keys"])
+app.include_router(settings.router, prefix=API_PREFIX, tags=["settings"])
 app.include_router(benchmarks.router, prefix=API_PREFIX, tags=["benchmarks"])
 app.include_router(runs.router, prefix=API_PREFIX, tags=["runs"])
+app.include_router(templates.router, prefix=API_PREFIX, tags=["templates"])
 app.include_router(ws.router, prefix=API_PREFIX, tags=["websocket"])

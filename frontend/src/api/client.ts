@@ -107,6 +107,48 @@ export interface ProviderDefinition {
 }
 
 // =============================================================================
+// Settings Import/Export Types
+// =============================================================================
+
+export interface EncryptedApiKey {
+  provider: string;
+  encrypted_value: string;
+  custom_env_var?: string;
+}
+
+export interface SettingsExport {
+  schema_version: number;
+  exported_at: string;
+  encrypted: boolean;
+  salt?: string;
+  api_keys: EncryptedApiKey[];
+}
+
+export interface SettingsImportRequest {
+  data: SettingsExport;
+  password?: string;
+}
+
+export interface ImportPreview {
+  api_keys: {
+    provider: string;
+    display_name: string;
+    key_preview: string;
+    custom_env_var?: string;
+  }[];
+  will_overwrite: string[];
+  new_providers: string[];
+  errors: string[];
+}
+
+export interface ImportResponse {
+  status: string;
+  imported_count: number;
+  skipped_count: number;
+  details: string[];
+}
+
+// =============================================================================
 // Model Discovery Types
 // =============================================================================
 
@@ -164,14 +206,29 @@ export interface RunSummary {
   primary_metric_name?: string;
   tags: string[];
   notes?: string;
+  template_name?: string;
 }
 
 export interface RunFilters {
   limit?: number;
+  page?: number;
+  per_page?: number;
   search?: string;
   status?: string;
   benchmark?: string;
   tag?: string;
+  started_after?: string;
+  started_before?: string;
+  sort_by?: 'created_at' | 'benchmark' | 'model';
+  sort_order?: 'asc' | 'desc';
+}
+
+export interface RunListResponse {
+  runs: RunSummary[];
+  total: number;
+  page: number;
+  per_page: number;
+  has_more: boolean;
 }
 
 // Structured summary types
@@ -217,6 +274,43 @@ export interface RunDetail extends RunSummary {
   summary?: ResultSummary | null;  // Structured results summary
   tags: string[];  // User-defined tags for organization
   notes?: string;  // User notes for the run
+  template_id?: string;  // ID of template used (if created from template)
+}
+
+// =============================================================================
+// Run Template Types
+// =============================================================================
+
+export interface RunTemplate {
+  template_id: string;
+  user_id: string;
+  name: string;
+  benchmark: string;
+  model: string;
+  config?: RunConfig;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunTemplateSummary {
+  template_id: string;
+  name: string;
+  benchmark: string;
+  model: string;
+  created_at: string;
+}
+
+export interface RunTemplateCreate {
+  name: string;
+  benchmark: string;
+  model: string;
+  limit?: number;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  timeout?: number;
+  epochs?: number;
+  max_connections?: number;
 }
 
 // SSE Event Types
@@ -498,6 +592,29 @@ class ApiClient {
   }
 
   // ===========================================================================
+  // Settings Import/Export Endpoints
+  // ===========================================================================
+
+  async exportSettings(password?: string): Promise<{ data: SettingsExport }> {
+    const params = password ? `?password=${encodeURIComponent(password)}` : '';
+    return this.request<{ data: SettingsExport }>(`/settings/export${params}`, {}, true);
+  }
+
+  async previewImport(data: SettingsExport, password?: string): Promise<ImportPreview> {
+    return this.request<ImportPreview>('/settings/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ data, password }),
+    }, true);
+  }
+
+  async importSettings(data: SettingsExport, password?: string): Promise<ImportResponse> {
+    return this.request<ImportResponse>('/settings/import', {
+      method: 'POST',
+      body: JSON.stringify({ data, password }),
+    }, true);
+  }
+
+  // ===========================================================================
   // Health & Benchmarks
   // ===========================================================================
 
@@ -528,13 +645,19 @@ class ApiClient {
     }, true);  // Requires auth
   }
 
-  async listRuns(filters: RunFilters = {}): Promise<RunSummary[]> {
+  async listRuns(filters: RunFilters = {}): Promise<RunListResponse> {
     const params = new URLSearchParams();
-    if (filters.limit) params.set('limit', filters.limit.toString());
+    if (filters.page) params.set('page', filters.page.toString());
+    if (filters.per_page) params.set('per_page', filters.per_page.toString());
+    if (filters.limit) params.set('per_page', filters.limit.toString()); // Legacy support
     if (filters.search) params.set('search', filters.search);
     if (filters.status) params.set('status', filters.status);
     if (filters.benchmark) params.set('benchmark', filters.benchmark);
     if (filters.tag) params.set('tag', filters.tag);
+    if (filters.started_after) params.set('started_after', filters.started_after);
+    if (filters.started_before) params.set('started_before', filters.started_before);
+    if (filters.sort_by) params.set('sort_by', filters.sort_by);
+    if (filters.sort_order) params.set('sort_order', filters.sort_order);
     const query = params.toString();
     return this.request(`/runs${query ? `?${query}` : ''}`);
   }
@@ -593,6 +716,44 @@ class ApiClient {
 
   async listAllTags(): Promise<string[]> {
     return this.request('/runs/tags');
+  }
+
+  // ===========================================================================
+  // Templates Endpoints
+  // ===========================================================================
+
+  async listTemplates(): Promise<RunTemplateSummary[]> {
+    return this.request<RunTemplateSummary[]>('/templates', {}, true);
+  }
+
+  async getTemplate(templateId: string): Promise<RunTemplate> {
+    return this.request<RunTemplate>(`/templates/${templateId}`, {}, true);
+  }
+
+  async createTemplate(template: RunTemplateCreate): Promise<RunTemplate> {
+    return this.request<RunTemplate>('/templates', {
+      method: 'POST',
+      body: JSON.stringify(template),
+    }, true);
+  }
+
+  async updateTemplate(templateId: string, name: string): Promise<RunTemplate> {
+    return this.request<RunTemplate>(`/templates/${templateId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }, true);
+  }
+
+  async deleteTemplate(templateId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/templates/${templateId}`, {
+      method: 'DELETE',
+    }, true);
+  }
+
+  async createRunFromTemplate(templateId: string): Promise<{ run_id: string }> {
+    return this.request<{ run_id: string }>(`/templates/${templateId}/run`, {
+      method: 'POST',
+    }, true);
   }
 
   /**
