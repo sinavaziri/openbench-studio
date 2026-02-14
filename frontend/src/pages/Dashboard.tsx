@@ -8,6 +8,7 @@ import { InlineError } from '../components/ErrorBoundary';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
 import { parseError } from '../utils/errorMessages';
+import { exportSelectedRunsToCSV, exportSelectedRunsToJSON } from '../utils/export';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -37,6 +38,8 @@ export default function Dashboard() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
   
   // Keyboard navigation state
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -106,6 +109,37 @@ export default function Dashboard() {
       setSelectionMode(true);
     }
   };
+
+  const handleSelectAll = useCallback(() => {
+    if (runs.length === 0) return;
+    
+    // Enable selection mode if not already
+    if (!selectionMode) {
+      setSelectionMode(true);
+    }
+    
+    // If all are selected, deselect all; otherwise select all
+    const allSelected = runs.every(run => selectedIds.has(run.run_id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(runs.map(run => run.run_id)));
+    }
+  }, [runs, selectionMode, selectedIds]);
+
+  const handleBulkExportCSV = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    exportSelectedRunsToCSV(runs, selectedIds);
+    toast.success(`Exported ${selectedIds.size} run${selectedIds.size > 1 ? 's' : ''} to CSV`);
+    setShowExportDropdown(false);
+  }, [runs, selectedIds]);
+
+  const handleBulkExportJSON = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    exportSelectedRunsToJSON(runs, selectedIds);
+    toast.success(`Exported ${selectedIds.size} run${selectedIds.size > 1 ? 's' : ''} to JSON`);
+    setShowExportDropdown(false);
+  }, [runs, selectedIds]);
 
   const handleCompare = () => {
     if (selectedIds.size >= 2) {
@@ -231,6 +265,10 @@ export default function Dashboard() {
   // Escape - Clear focus/selection
   useHotkeys('escape', () => {
     if (isHelpOpen) return;
+    if (showExportDropdown) {
+      setShowExportDropdown(false);
+      return;
+    }
     if (document.activeElement === searchInputRef.current) {
       searchInputRef.current?.blur();
       return;
@@ -242,6 +280,46 @@ export default function Dashboard() {
       setSelectedIds(new Set());
     }
   }, { enableOnInputs: true });
+
+  // Ctrl+A / Cmd+A - Select all runs
+  useHotkeys('ctrl+a', (e) => {
+    if (isHelpOpen) return;
+    e.preventDefault();
+    handleSelectAll();
+  });
+  useHotkeys('meta+a', (e) => {
+    if (isHelpOpen) return;
+    e.preventDefault();
+    handleSelectAll();
+  });
+
+  // Delete / Backspace - Bulk delete selected runs
+  useHotkeys('delete', () => {
+    if (isHelpOpen || !selectionMode || selectedIds.size === 0 || isDeleting) return;
+    handleDelete();
+  });
+  useHotkeys('backspace', () => {
+    if (isHelpOpen || !selectionMode || selectedIds.size === 0 || isDeleting) return;
+    // Only trigger if not in an input
+    if (document.activeElement?.tagName === 'INPUT') return;
+    handleDelete();
+  });
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+        setShowExportDropdown(false);
+      }
+    };
+    
+    if (showExportDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showExportDropdown]);
 
   return (
     <Layout>
@@ -330,6 +408,42 @@ export default function Dashboard() {
                 >
                   {isDeleting ? 'Deleting...' : `Delete ${selectedIds.size > 0 ? `(${selectedIds.size})` : ''}`}
                 </button>
+                
+                {/* Export Dropdown */}
+                <div className="relative" ref={exportDropdownRef}>
+                  <button
+                    onClick={() => setShowExportDropdown(!showExportDropdown)}
+                    disabled={selectedIds.size === 0}
+                    className={`text-[13px] px-4 py-2 transition-all flex items-center gap-1 ${
+                      selectedIds.size > 0
+                        ? 'text-foreground bg-background-secondary hover:bg-background-tertiary border border-border'
+                        : 'text-muted-foreground bg-background-tertiary cursor-not-allowed border border-border'
+                    }`}
+                  >
+                    Export {selectedIds.size > 0 && `(${selectedIds.size})`}
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  
+                  {showExportDropdown && selectedIds.size > 0 && (
+                    <div className="absolute right-0 top-full mt-1 w-32 bg-background-secondary border border-border shadow-lg z-10">
+                      <button
+                        onClick={handleBulkExportCSV}
+                        className="w-full px-4 py-2 text-[13px] text-foreground hover:bg-background-tertiary text-left transition-colors"
+                      >
+                        CSV
+                      </button>
+                      <button
+                        onClick={handleBulkExportJSON}
+                        className="w-full px-4 py-2 text-[13px] text-foreground hover:bg-background-tertiary text-left transition-colors"
+                      >
+                        JSON
+                      </button>
+                    </div>
+                  )}
+                </div>
+                
                 <button
                   onClick={handleCompare}
                   disabled={selectedIds.size < 2}
@@ -489,13 +603,26 @@ export default function Dashboard() {
         
         {/* Selection Info */}
         {selectionMode && (
-          <div className="mb-4 py-3 px-4 bg-background-tertiary border border-border text-[13px] text-muted">
-            {selectedIds.size === 0 
-              ? 'Click runs to select them for comparison or deletion'
-              : selectedIds.size === 1
-              ? '1 run selected'
-              : `${selectedIds.size} runs selected`
-            }
+          <div className="mb-4 py-3 px-4 bg-background-tertiary border border-border text-[13px] text-muted flex items-center justify-between">
+            <span>
+              {selectedIds.size === 0 
+                ? 'Click runs to select them for comparison, deletion, or export'
+                : selectedIds.size === 1
+                ? '1 run selected'
+                : `${selectedIds.size} runs selected`
+              }
+            </span>
+            <span className="text-muted-foreground text-[11px]">
+              <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-[10px] font-mono">⌘A</kbd>
+              {' '}select all
+              {selectedIds.size > 0 && (
+                <>
+                  {' · '}
+                  <kbd className="px-1.5 py-0.5 bg-background border border-border rounded text-[10px] font-mono">⌫</kbd>
+                  {' '}delete
+                </>
+              )}
+            </span>
           </div>
         )}
         
@@ -507,6 +634,7 @@ export default function Dashboard() {
           onSelectionChange={setSelectedIds}
           focusedIndex={focusedIndex}
           onFocusChange={setFocusedIndex}
+          onSelectAll={handleSelectAll}
         />
       </div>
     </Layout>

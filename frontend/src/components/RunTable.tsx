@@ -9,6 +9,7 @@ interface RunTableProps {
   onSelectionChange?: (ids: Set<string>) => void;
   focusedIndex?: number;
   onFocusChange?: (index: number) => void;
+  onSelectAll?: () => void;
 }
 
 function StatusIndicator({ status }: { status: RunSummary['status'] }) {
@@ -68,7 +69,27 @@ export default function RunTable({
   onSelectionChange,
   focusedIndex = -1,
   onFocusChange,
+  onSelectAll,
 }: RunTableProps) {
+  const allSelected = runs.length > 0 && runs.every(run => selectedIds.has(run.run_id));
+  const someSelected = runs.some(run => selectedIds.has(run.run_id)) && !allSelected;
+
+  const handleSelectAllClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!onSelectionChange) return;
+    
+    if (allSelected) {
+      // Deselect all
+      onSelectionChange(new Set());
+    } else {
+      // Select all
+      const allIds = new Set(runs.map(run => run.run_id));
+      onSelectionChange(allIds);
+    }
+    onSelectAll?.();
+  };
   const handleRowClick = (runId: string, e: React.MouseEvent) => {
     if (!selectable || !onSelectionChange) return;
     
@@ -135,7 +156,32 @@ export default function RunTable({
     <div className="border-t border-border">
       {/* Header */}
       <div className={`grid ${gridCols} gap-6 py-3 border-b border-border text-[11px] text-muted-foreground uppercase tracking-[0.1em]`}>
-        {selectable && <div />}
+        {selectable && (
+          <div className="flex items-center justify-center">
+            <div
+              onClick={handleSelectAllClick}
+              className={`w-4 h-4 border rounded-sm flex items-center justify-center transition-colors cursor-pointer ${
+                allSelected
+                  ? 'bg-foreground border-foreground'
+                  : someSelected
+                  ? 'bg-foreground/50 border-foreground'
+                  : 'border-muted-foreground hover:border-muted'
+              }`}
+              title={allSelected ? 'Deselect all' : 'Select all'}
+            >
+              {allSelected && (
+                <svg className="w-3 h-3 text-background" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {someSelected && !allSelected && (
+                <svg className="w-3 h-3 text-background" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 12h14" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
         <div>Benchmark</div>
         <div>Model</div>
         <div>Result</div>
