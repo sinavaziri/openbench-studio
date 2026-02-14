@@ -195,6 +195,17 @@ export interface RunConfig {
   max_connections?: number;
 }
 
+export interface RunDuplicateOverrides {
+  model?: string;
+  limit?: number;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  timeout?: number;
+  epochs?: number;
+  max_connections?: number;
+}
+
 export interface RunSummary {
   run_id: string;
   benchmark: string;
@@ -202,11 +213,29 @@ export interface RunSummary {
   status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
   created_at: string;
   finished_at?: string;
+  scheduled_for?: string;
   primary_metric?: number;
   primary_metric_name?: string;
   tags: string[];
   notes?: string;
   template_name?: string;
+}
+
+export interface ScheduledRunCreate {
+  benchmark: string;
+  model: string;
+  scheduled_for: string;
+  limit?: number;
+  temperature?: number;
+  top_p?: number;
+  max_tokens?: number;
+  timeout?: number;
+  epochs?: number;
+  max_connections?: number;
+}
+
+export interface ScheduledRunUpdate {
+  scheduled_for: string;
 }
 
 export interface RunFilters {
@@ -263,6 +292,7 @@ export interface ResultSummary {
 
 export interface RunDetail extends RunSummary {
   started_at?: string;
+  scheduled_for?: string;
   artifact_dir?: string;
   exit_code?: number;
   error?: string;
@@ -313,6 +343,44 @@ export interface RunTemplateCreate {
   max_connections?: number;
 }
 
+// =============================================================================
+// Notification Types
+// =============================================================================
+
+export interface NotificationSettings {
+  email_enabled: boolean;
+  webhook_url: string | null;
+  notify_on_complete: boolean;
+  notify_on_failure: boolean;
+}
+
+export interface NotificationSettingsUpdate {
+  email_enabled?: boolean;
+  webhook_url?: string;
+  notify_on_complete?: boolean;
+  notify_on_failure?: boolean;
+}
+
+export interface NotificationLog {
+  log_id: string;
+  run_id: string | null;
+  notification_type: 'email' | 'webhook';
+  status: 'sent' | 'failed';
+  message: string | null;
+  created_at: string;
+}
+
+export interface WebhookTestResponse {
+  success: boolean;
+  status_code: number | null;
+  message: string;
+}
+
+export interface SmtpStatusResponse {
+  smtp_enabled: boolean;
+  message: string;
+}
+
 // SSE Event Types
 export interface SSEStatusEvent {
   status: string;
@@ -348,6 +416,66 @@ export interface SSECanceledEvent {
 
 export interface SSEHeartbeatEvent {
   timestamp: string;
+}
+
+// =============================================================================
+// Stats/Analytics Types
+// =============================================================================
+
+export interface HistoryDataPoint {
+  date: string;
+  total: number;
+  completed: number;
+  failed: number;
+  avg_score: number | null;
+}
+
+export interface HistoryResponse {
+  data: HistoryDataPoint[];
+  period: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface ModelStats {
+  model: string;
+  run_count: number;
+  completed_count: number;
+  failed_count: number;
+  avg_score: number | null;
+  min_score: number | null;
+  max_score: number | null;
+  success_rate: number;
+}
+
+export interface ModelsResponse {
+  models: ModelStats[];
+  total_runs: number;
+}
+
+export interface BenchmarkStats {
+  benchmark: string;
+  run_count: number;
+  completed_count: number;
+  failed_count: number;
+  avg_score: number | null;
+  last_run: string | null;
+}
+
+export interface BenchmarksResponse {
+  benchmarks: BenchmarkStats[];
+  total_runs: number;
+}
+
+export interface SummaryStats {
+  total_runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  running_runs: number;
+  success_rate: number;
+  avg_score: number | null;
+  unique_models: number;
+  unique_benchmarks: number;
 }
 
 export type SSEEventHandlers = {
@@ -714,8 +842,43 @@ class ApiClient {
     }, true);  // Requires auth
   }
 
+  async duplicateRun(runId: string, overrides?: RunDuplicateOverrides): Promise<{ run_id: string }> {
+    return this.request(`/runs/${runId}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify(overrides || {}),
+    }, true);  // Requires auth
+  }
+
   async listAllTags(): Promise<string[]> {
     return this.request('/runs/tags');
+  }
+
+  // ===========================================================================
+  // Scheduled Runs Endpoints
+  // ===========================================================================
+
+  async scheduleRun(config: ScheduledRunCreate): Promise<{ run_id: string }> {
+    return this.request('/runs/schedule', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }, true);  // Requires auth
+  }
+
+  async listScheduledRuns(): Promise<RunSummary[]> {
+    return this.request('/runs/scheduled');
+  }
+
+  async updateScheduledRun(runId: string, update: ScheduledRunUpdate): Promise<RunSummary> {
+    return this.request(`/runs/scheduled/${runId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    }, true);  // Requires auth
+  }
+
+  async cancelScheduledRun(runId: string): Promise<{ status: string }> {
+    return this.request(`/runs/scheduled/${runId}`, {
+      method: 'DELETE',
+    }, true);  // Requires auth
   }
 
   // ===========================================================================
@@ -754,6 +917,56 @@ class ApiClient {
     return this.request<{ run_id: string }>(`/templates/${templateId}/run`, {
       method: 'POST',
     }, true);
+  }
+
+  // ===========================================================================
+  // Stats/Analytics Endpoints
+  // ===========================================================================
+
+  async getSummaryStats(days: number = 30): Promise<SummaryStats> {
+    return this.request<SummaryStats>(`/stats/summary?days=${days}`);
+  }
+
+  async getRunHistory(days: number = 30, period: 'day' | 'week' = 'day'): Promise<HistoryResponse> {
+    return this.request<HistoryResponse>(`/stats/history?days=${days}&period=${period}`);
+  }
+
+  async getModelStats(days: number = 30, limit: number = 10): Promise<ModelsResponse> {
+    return this.request<ModelsResponse>(`/stats/models?days=${days}&limit=${limit}`);
+  }
+
+  async getBenchmarkStats(days: number = 30, limit: number = 10): Promise<BenchmarksResponse> {
+    return this.request<BenchmarksResponse>(`/stats/benchmarks?days=${days}&limit=${limit}`);
+  }
+
+  // ===========================================================================
+  // Notification Endpoints
+  // ===========================================================================
+
+  async getNotificationSettings(): Promise<NotificationSettings> {
+    return this.request<NotificationSettings>('/notifications/settings', {}, true);
+  }
+
+  async updateNotificationSettings(update: NotificationSettingsUpdate): Promise<NotificationSettings> {
+    return this.request<NotificationSettings>('/notifications/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    }, true);
+  }
+
+  async getNotificationLogs(limit: number = 50, offset: number = 0): Promise<NotificationLog[]> {
+    return this.request<NotificationLog[]>(`/notifications/logs?limit=${limit}&offset=${offset}`, {}, true);
+  }
+
+  async testWebhook(webhookUrl: string): Promise<WebhookTestResponse> {
+    return this.request<WebhookTestResponse>('/notifications/test-webhook', {
+      method: 'POST',
+      body: JSON.stringify({ webhook_url: webhookUrl }),
+    }, true);
+  }
+
+  async getSmtpStatus(): Promise<SmtpStatusResponse> {
+    return this.request<SmtpStatusResponse>('/notifications/smtp-status');
   }
 
   /**

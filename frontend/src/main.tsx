@@ -17,6 +17,7 @@ const EvalViewer = lazy(() => import('./pages/EvalViewer'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Login = lazy(() => import('./pages/Login'))
 const Settings = lazy(() => import('./pages/Settings'))
+const Analytics = lazy(() => import('./pages/Analytics'))
 
 // Loading fallback component
 function PageLoader() {
@@ -88,6 +89,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <Suspense fallback={<PageLoader />}><NewRun /></Suspense> },
       { path: '/history', element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
+      { path: '/analytics', element: <Suspense fallback={<PageLoader />}><Analytics /></Suspense> },
       { path: '/runs/:id', element: <Suspense fallback={<PageLoader />}><RunDetail /></Suspense> },
       { path: '/runs/:id/eval/*', element: <Suspense fallback={<PageLoader />}><EvalViewer /></Suspense> },
       { path: '/compare', element: <Suspense fallback={<PageLoader />}><Compare /></Suspense> },

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from app.api.routes import api_keys, auth, benchmarks, health, runs, settings, templates, ws
+from app.api.routes import api_keys, auth, benchmarks, health, notifications, runs, settings, stats, templates, ws
 from app.core.config import API_PREFIX
 from app.db.migrations import run_migrations
 
@@ -45,6 +45,14 @@ tags_metadata = [
         "name": "templates",
         "description": "Save and manage run templates. Reuse benchmark configurations for quick runs.",
     },
+    {
+        "name": "stats",
+        "description": "Analytics and statistics endpoints. Get aggregated run data for dashboards and visualizations.",
+    },
+    {
+        "name": "notifications",
+        "description": "Notification settings and history. Configure email and webhook notifications for run events.",
+    },
 ]
 
 
@@ -55,8 +63,17 @@ async def lifespan(app: FastAPI):
     logger.info("Running database migrations...")
     run_migrations()
     logger.info("Database migrations complete")
+    
+    # Start the run scheduler
+    from app.services.scheduler import scheduler
+    await scheduler.start()
+    logger.info("Run scheduler started")
+    
     yield
-    # Shutdown: cleanup if needed
+    
+    # Shutdown: stop the scheduler
+    await scheduler.stop()
+    logger.info("Run scheduler stopped")
 
 
 app = FastAPI(
@@ -179,4 +196,6 @@ app.include_router(settings.router, prefix=API_PREFIX, tags=["settings"])
 app.include_router(benchmarks.router, prefix=API_PREFIX, tags=["benchmarks"])
 app.include_router(runs.router, prefix=API_PREFIX, tags=["runs"])
 app.include_router(templates.router, prefix=API_PREFIX, tags=["templates"])
+app.include_router(stats.router, prefix=API_PREFIX, tags=["stats"])
+app.include_router(notifications.router, prefix=API_PREFIX, tags=["notifications"])
 app.include_router(ws.router, prefix=API_PREFIX, tags=["websocket"])

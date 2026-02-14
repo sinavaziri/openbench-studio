@@ -17,6 +17,7 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { path: '/', label: 'New Run' },
     { path: '/history', label: 'History' },
+    { path: '/analytics', label: 'Analytics' },
   ];
 
   const toggleMobileMenu = () => {
