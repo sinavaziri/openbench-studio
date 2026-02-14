@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { api, RunDetail } from '../api/client';
 import Layout from '../components/Layout';
+import ExportDropdown from '../components/ExportDropdown';
+import { exportComparisonToCSV, exportComparisonToJSON, ComparisonData } from '../utils/export';
 
 function formatValue(value: number, unit?: string | null): string {
   if (unit === null || unit === undefined) {
@@ -174,6 +177,23 @@ export default function Compare() {
   const primaryMetricData = getPrimaryMetricData();
   const breakdowns = aggregateBreakdowns();
 
+  // Export handlers
+  const getComparisonData = (): ComparisonData => ({
+    runs,
+    metrics,
+    breakdowns,
+  });
+
+  const handleExportCSV = () => {
+    exportComparisonToCSV(getComparisonData());
+    toast.success('Exported comparison to CSV');
+  };
+
+  const handleExportJSON = () => {
+    exportComparisonToJSON(getComparisonData());
+    toast.success('Exported comparison to JSON');
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -233,12 +253,25 @@ export default function Compare() {
         >
           ← Back
         </Link>
-        <h1 className="text-[28px] text-white tracking-tight mb-2">
-          Compare Runs
-        </h1>
-        <p className="text-[15px] text-[#666]">
-          Comparing {runs.length} runs
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-[28px] text-white tracking-tight mb-2">
+              Compare Runs
+            </h1>
+            <p className="text-[15px] text-[#666]">
+              Comparing {runs.length} runs
+            </p>
+          </div>
+          {runs.length > 0 && (
+            <ExportDropdown
+              label="Export Comparison"
+              options={[
+                { label: 'Comparison', format: 'csv', onClick: handleExportCSV },
+                { label: 'Comparison', format: 'json', onClick: handleExportJSON },
+              ]}
+            />
+          )}
+        </div>
       </div>
 
       {/* Warning for different benchmarks */}

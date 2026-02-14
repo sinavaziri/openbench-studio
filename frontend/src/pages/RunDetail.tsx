@@ -8,6 +8,8 @@ import LogTail from '../components/LogTail';
 import MetricCards from '../components/MetricCards';
 import BreakdownChart from '../components/BreakdownChart';
 import ArtifactViewer from '../components/ArtifactViewer';
+import ExportDropdown from '../components/ExportDropdown';
+import { exportRunDetailToCSV, exportRunDetailToJSON } from '../utils/export';
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
@@ -246,6 +248,19 @@ export default function RunDetail() {
     }
   };
 
+  // Export handlers
+  const handleExportCSV = () => {
+    if (!run) return;
+    exportRunDetailToCSV(run);
+    toast.success('Exported run to CSV');
+  };
+
+  const handleExportJSON = () => {
+    if (!run) return;
+    exportRunDetailToJSON(run);
+    toast.success('Exported run to JSON');
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -400,6 +415,17 @@ export default function RunDetail() {
                 Run Again →
               </button>
             )}
+
+            {/* Export Button */}
+            <div className="flex justify-center">
+              <ExportDropdown
+                label="Export Run"
+                options={[
+                  { label: 'Run Data', format: 'csv', onClick: handleExportCSV },
+                  { label: 'Run Data', format: 'json', onClick: handleExportJSON },
+                ]}
+              />
+            </div>
             
             {isAuthenticated && !isActive && (
               <>

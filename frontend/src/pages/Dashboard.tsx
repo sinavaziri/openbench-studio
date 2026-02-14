@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, RunFilters, RunSummary } from '../api/client';
+import { api, ApiError, RunFilters, RunSummary } from '../api/client';
+import { parseError, isNetworkError } from '../utils/errorMessages';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
+import ExportDropdown from '../components/ExportDropdown';
+import { InlineError } from '../components/ErrorBoundary';
+import { useHotkeys } from '../hooks/useHotkeys';
+import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
+import {
+  exportFilteredRunsToCSV,
+  exportFilteredRunsToJSON,
+  exportSelectedRunsToCSV,
+  exportSelectedRunsToJSON,
+} from '../utils/export';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -20,7 +31,7 @@ export default function Dashboard() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; recoverable: boolean } | null>(null);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,6 +44,11 @@ export default function Dashboard() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Keyboard navigation state
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const { isHelpOpen } = useKeyboardShortcuts();
 
   const loadRuns = useCallback(async () => {
     try {
@@ -46,11 +62,23 @@ export default function Dashboard() {
       setRuns(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load runs');
+      const parsed = parseError(err);
+      // Only show error if this is the first load (not during polling)
+      if (loading) {
+        setError({
+          title: parsed.title,
+          message: parsed.action ? `${parsed.message} ${parsed.action}` : parsed.message,
+          recoverable: parsed.recoverable,
+        });
+      }
+      // For network errors during polling, fail silently to avoid spam
+      if (!isNetworkError(err) && !loading) {
+        console.error('[Dashboard] Failed to refresh runs:', err);
+      }
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter]);
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter, loading]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -144,6 +172,118 @@ export default function Dashboard() {
     failed: runs.filter((r) => r.status === 'failed').length,
   };
 
+  // Export handlers
+  const currentFilters = {
+    status: statusFilter || undefined,
+    benchmark: benchmarkFilter || undefined,
+    tag: tagFilter || undefined,
+    search: searchQuery || undefined,
+  };
+
+  const hasFilters = statusFilter || benchmarkFilter || tagFilter || searchQuery;
+
+  const handleExportAllCSV = () => {
+    exportFilteredRunsToCSV(runs, { filters: currentFilters });
+    toast.success(`Exported ${runs.length} runs to CSV`);
+  };
+
+  const handleExportAllJSON = () => {
+    exportFilteredRunsToJSON(runs, { filters: currentFilters });
+    toast.success(`Exported ${runs.length} runs to JSON`);
+  };
+
+  const handleExportSelectedCSV = () => {
+    if (selectedIds.size === 0) return;
+    exportSelectedRunsToCSV(runs, selectedIds);
+    toast.success(`Exported ${selectedIds.size} selected runs to CSV`);
+  };
+
+  const handleExportSelectedJSON = () => {
+    if (selectedIds.size === 0) return;
+    exportSelectedRunsToJSON(runs, selectedIds);
+    toast.success(`Exported ${selectedIds.size} selected runs to JSON`);
+  };
+
+  // Keyboard shortcuts
+  
+  // J - Move down in list
+  useHotkeys('j', () => {
+    if (isHelpOpen || runs.length === 0) return;
+    setFocusedIndex(prev => {
+      const newIndex = prev < runs.length - 1 ? prev + 1 : prev;
+      return newIndex;
+    });
+  });
+
+  // K - Move up in list
+  useHotkeys('k', () => {
+    if (isHelpOpen || runs.length === 0) return;
+    setFocusedIndex(prev => {
+      const newIndex = prev > 0 ? prev - 1 : 0;
+      return newIndex;
+    });
+  });
+
+  // Enter - Open focused run
+  useHotkeys('enter', () => {
+    if (isHelpOpen || focusedIndex < 0 || focusedIndex >= runs.length) return;
+    const focusedRun = runs[focusedIndex];
+    if (focusedRun) {
+      navigate(`/runs/${focusedRun.run_id}`);
+    }
+  });
+
+  // D - Delete focused run (with confirmation)
+  useHotkeys('d', () => {
+    if (isHelpOpen || focusedIndex < 0 || focusedIndex >= runs.length || isDeleting) return;
+    const focusedRun = runs[focusedIndex];
+    if (focusedRun) {
+      const confirmMessage = `Are you sure you want to delete "${focusedRun.benchmark}" run?`;
+      if (confirm(confirmMessage)) {
+        api.bulkDeleteRuns([focusedRun.run_id])
+          .then((result) => {
+            if (result.summary.deleted > 0) {
+              toast.success('Run deleted');
+              loadRuns();
+              // Adjust focus if needed
+              setFocusedIndex(prev => Math.min(prev, runs.length - 2));
+            } else if (result.summary.running > 0) {
+              toast.error('Cannot delete a running run');
+            } else {
+              toast.error('Failed to delete run');
+            }
+          })
+          .catch(() => {
+            toast.error('Failed to delete run');
+          });
+      }
+    }
+  });
+
+  // R - Refresh
+  useHotkeys('r', () => {
+    if (isHelpOpen) return;
+    loadRuns();
+    toast.success('Refreshed');
+  });
+
+  // / - Focus search
+  useHotkeys('/', () => {
+    if (isHelpOpen) return;
+    searchInputRef.current?.focus();
+  });
+
+  // Escape - Clear focus/selection
+  useHotkeys('escape', () => {
+    if (isHelpOpen) return;
+    if (focusedIndex >= 0) {
+      setFocusedIndex(-1);
+    } else if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    }
+  }, { enableOnInputs: true });
+
   return (
     <Layout>
       {/* Header Section */}
@@ -233,7 +373,28 @@ export default function Dashboard() {
                 >
                   Compare {selectedIds.size > 0 && `(${selectedIds.size})`}
                 </button>
+
+                {/* Export selected runs */}
+                <ExportDropdown
+                  disabled={selectedIds.size === 0}
+                  label={`Export${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+                  options={[
+                    { label: 'Selected Runs', format: 'csv', onClick: handleExportSelectedCSV },
+                    { label: 'Selected Runs', format: 'json', onClick: handleExportSelectedJSON },
+                  ]}
+                />
               </>
+            )}
+
+            {/* Export all/filtered runs (when not in selection mode) */}
+            {!selectionMode && runs.length > 0 && (
+              <ExportDropdown
+                label={hasFilters ? `Export (${runs.length})` : 'Export'}
+                options={[
+                  { label: hasFilters ? 'Filtered Runs' : 'All Runs', format: 'csv', onClick: handleExportAllCSV },
+                  { label: hasFilters ? 'Filtered Runs' : 'All Runs', format: 'json', onClick: handleExportAllJSON },
+                ]}
+              />
             )}
             
             <Link
@@ -251,6 +412,7 @@ export default function Dashboard() {
             {/* Search Input */}
             <div className="relative flex-1 max-w-md">
               <input
+                ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -270,6 +432,10 @@ export default function Dashboard() {
                   d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                 />
               </svg>
+              {/* Keyboard hint */}
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#333] pointer-events-none">
+                /
+              </span>
             </div>
 
             {/* Filter Toggle */}
@@ -392,6 +558,8 @@ export default function Dashboard() {
           selectable={selectionMode}
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
+          focusedIndex={focusedIndex}
+          onFocusChange={setFocusedIndex}
         />
       </div>
     </Layout>
