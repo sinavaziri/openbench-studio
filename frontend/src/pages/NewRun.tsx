@@ -1,12 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, ApiKeyPublic, Benchmark, RunConfig, ModelProvider } from '../api/client';
+import { api, ApiKeyPublic, Benchmark, RunConfig, ModelProvider, BenchmarkRequirements } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import BenchmarkCatalog from '../components/BenchmarkCatalog';
 import { InlineError } from '../components/ErrorBoundary';
 import { parseError } from '../utils/errorMessages';
+
+interface IncompatibleModel {
+  model_id: string;
+  reason: string;
+}
 
 interface LocationState {
   prefill?: RunConfig;
@@ -39,6 +44,13 @@ export default function NewRun() {
   const [model, setModel] = useState(prefillConfig?.model || '');
   const [customModel, setCustomModel] = useState('');
   const [limit, setLimit] = useState<number | undefined>(prefillConfig?.limit ?? 10);
+  
+  // Compatibility state
+  const [compatibleProviders, setCompatibleProviders] = useState<ModelProvider[]>([]);
+  const [incompatibleModels, setIncompatibleModels] = useState<IncompatibleModel[]>([]);
+  const [showIncompatible, setShowIncompatible] = useState(false);
+  const [benchmarkRequirements, setBenchmarkRequirements] = useState<BenchmarkRequirements | null>(null);
+  const [compatibilityLoading, setCompatibilityLoading] = useState(false);
   
   // Advanced settings
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -107,6 +119,18 @@ export default function NewRun() {
     }
   }, [prefillConfig]);
 
+  // Fetch compatible models when benchmark changes
+  useEffect(() => {
+    if (selectedBenchmark && isAuthenticated) {
+      fetchCompatibleModels(selectedBenchmark.name);
+    } else {
+      // No benchmark selected - show all models
+      setCompatibleProviders(modelProviders);
+      setIncompatibleModels([]);
+      setBenchmarkRequirements(null);
+    }
+  }, [selectedBenchmark, modelProviders, isAuthenticated]);
+
   const loadData = async () => {
     try {
       const [benchmarksData, keysData] = await Promise.all([
@@ -134,7 +158,7 @@ export default function NewRun() {
     setModelsError(null);
     
     try {
-      const response = await api.getAvailableModels();
+      const response = await api.getAvailableModels(false, true); // Include capabilities
       setModelProviders(response.providers);
     } catch (err) {
       console.error('Failed to fetch available models:', err);
@@ -143,6 +167,34 @@ export default function NewRun() {
       setModelProviders([]);
     } finally {
       setModelsLoading(false);
+    }
+  };
+
+  const fetchCompatibleModels = async (benchmarkName: string) => {
+    setCompatibilityLoading(true);
+    try {
+      const response = await api.getCompatibleModels(benchmarkName);
+      setCompatibleProviders(response.providers);
+      setIncompatibleModels(response.incompatible);
+      setBenchmarkRequirements(response.requirements);
+      
+      // Clear model selection if current model is incompatible
+      if (model && model !== 'custom') {
+        const isCompatible = response.providers.some(p => 
+          p.models.some(m => m.id === model)
+        );
+        if (!isCompatible) {
+          setModel('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch compatible models:', err);
+      // Fallback to all models on error
+      setCompatibleProviders(modelProviders);
+      setIncompatibleModels([]);
+      setBenchmarkRequirements(null);
+    } finally {
+      setCompatibilityLoading(false);
     }
   };
 
@@ -323,13 +375,50 @@ export default function NewRun() {
 
           {/* Model Selection */}
           <div>
-            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
-              Model
-            </p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+                Model
+              </p>
+              {selectedBenchmark && incompatibleModels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowIncompatible(!showIncompatible)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showIncompatible ? 'Hide' : 'Show'} {incompatibleModels.length} incompatible
+                </button>
+              )}
+            </div>
             
-            {modelsLoading && (
+            {/* Benchmark Requirements Badges */}
+            {benchmarkRequirements && (benchmarkRequirements.vision || benchmarkRequirements.function_calling || benchmarkRequirements.code_execution || benchmarkRequirements.min_context_length) && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {benchmarkRequirements.vision && (
+                  <span className="px-2 py-1 text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded">
+                    📷 Requires Vision
+                  </span>
+                )}
+                {benchmarkRequirements.function_calling && (
+                  <span className="px-2 py-1 text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded">
+                    🔧 Requires Function Calling
+                  </span>
+                )}
+                {benchmarkRequirements.code_execution && (
+                  <span className="px-2 py-1 text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 rounded">
+                    💻 Requires Code Execution
+                  </span>
+                )}
+                {benchmarkRequirements.min_context_length && (
+                  <span className="px-2 py-1 text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded">
+                    📏 {(benchmarkRequirements.min_context_length / 1000).toFixed(0)}K+ Context
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {(modelsLoading || compatibilityLoading) && (
               <div className="text-[13px] text-muted-foreground mb-3">
-                Loading available models...
+                {compatibilityLoading ? 'Filtering compatible models...' : 'Loading available models...'}
               </div>
             )}
             
@@ -342,7 +431,7 @@ export default function NewRun() {
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              disabled={modelsLoading}
+              disabled={modelsLoading || compatibilityLoading}
               className="w-full px-4 py-3 bg-background border border-border-secondary text-foreground text-[14px] sm:text-[15px] focus:border-foreground transition-colors appearance-none cursor-pointer hover:border-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
@@ -351,15 +440,29 @@ export default function NewRun() {
                 backgroundSize: '12px 8px',
               }}
             >
-              <option value="" disabled>Select a model...</option>
-              {modelProviders.length === 0 && !modelsLoading ? (
-                <option value="" disabled>No models available - please add API keys in Settings</option>
+              <option value="" disabled>
+                {selectedBenchmark 
+                  ? `Select a compatible model (${compatibleProviders.reduce((a, p) => a + p.models.length, 0)} available)...`
+                  : 'Select a model...'
+                }
+              </option>
+              {compatibleProviders.length === 0 && !modelsLoading && !compatibilityLoading ? (
+                <option value="" disabled>
+                  {selectedBenchmark 
+                    ? 'No compatible models available for this benchmark'
+                    : 'No models available - please add API keys in Settings'
+                  }
+                </option>
               ) : (
-                modelProviders.map((provider) => (
+                compatibleProviders.map((provider) => (
                   <optgroup key={provider.provider_key} label={provider.name}>
                     {provider.models.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}{m.description ? ` - ${m.description}` : ''}
+                        {m.name}
+                        {m.capabilities?.vision ? ' 📷' : ''}
+                        {m.capabilities?.function_calling ? ' 🔧' : ''}
+                        {m.capabilities?.code_execution ? ' 💻' : ''}
+                        {m.context_length ? ` (${(m.context_length / 1000).toFixed(0)}K)` : ''}
                       </option>
                     ))}
                   </optgroup>
@@ -367,6 +470,26 @@ export default function NewRun() {
               )}
               <option value="custom">Custom model...</option>
             </select>
+            
+            {/* Incompatible models warning */}
+            {showIncompatible && incompatibleModels.length > 0 && (
+              <div className="mt-3 p-3 bg-orange-500/5 border border-orange-500/20 rounded">
+                <p className="text-[12px] text-orange-400 mb-2">
+                  Incompatible models for {selectedBenchmark?.name}:
+                </p>
+                <ul className="text-[11px] text-muted-foreground space-y-1">
+                  {incompatibleModels.slice(0, 5).map((m) => (
+                    <li key={m.model_id}>
+                      <span className="text-muted">{m.model_id}</span>
+                      <span className="text-orange-400/70 ml-2">— {m.reason}</span>
+                    </li>
+                  ))}
+                  {incompatibleModels.length > 5 && (
+                    <li className="text-muted">... and {incompatibleModels.length - 5} more</li>
+                  )}
+                </ul>
+              </div>
+            )}
             
             {model === 'custom' && (
               <div className="mt-3">
@@ -554,10 +677,10 @@ export default function NewRun() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={!selectedBenchmark || !model || (model === 'custom' && !customModel) || submitting || modelsLoading}
+            disabled={!selectedBenchmark || !model || (model === 'custom' && !customModel) || submitting || modelsLoading || compatibilityLoading}
             className="w-full sm:w-auto px-8 py-3 bg-accent text-accent-foreground text-[14px] tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity min-h-[48px]"
           >
-            {submitting ? 'Starting...' : modelsLoading ? 'Loading...' : 'Start Run'}
+            {submitting ? 'Starting...' : (modelsLoading || compatibilityLoading) ? 'Loading...' : 'Start Run'}
           </button>
         </form>
       </div>
