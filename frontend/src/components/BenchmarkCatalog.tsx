@@ -77,10 +77,10 @@ export default function BenchmarkCatalog({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-1">
+          <h2 className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-1">
             Browse Benchmarks
           </h2>
-          <p className="text-[13px] text-[#888]">
+          <p className="text-[13px] text-muted">
             {filteredBenchmarks.length === benchmarks.length
               ? `${benchmarks.length} benchmarks`
               : `Showing ${filteredBenchmarks.length} result${filteredBenchmarks.length !== 1 ? 's' : ''}`
@@ -93,7 +93,7 @@ export default function BenchmarkCatalog({
       <div className="grid grid-cols-2 gap-4 mb-8">
         {/* Search Bar */}
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666]" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search benchmarks..."
@@ -101,9 +101,9 @@ export default function BenchmarkCatalog({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="
               w-full h-10 pl-10 pr-4 
-              bg-[#0a0a0a] border border-[#1a1a1a] 
-              text-[13px] text-white placeholder-[#666]
-              focus:border-[#333] focus:outline-none
+              bg-background-secondary border border-border 
+              text-[13px] text-foreground placeholder-muted-foreground
+              focus:border-border-secondary focus:outline-none
               transition-colors
             "
           />
@@ -116,9 +116,9 @@ export default function BenchmarkCatalog({
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="
               w-full h-10 px-4 
-              bg-[#0a0a0a] border border-[#1a1a1a] 
-              text-[13px] text-white
-              focus:border-[#333] focus:outline-none
+              bg-background-secondary border border-border 
+              text-[13px] text-foreground
+              focus:border-border-secondary focus:outline-none
               transition-colors
               appearance-none
               cursor-pointer
@@ -131,7 +131,7 @@ export default function BenchmarkCatalog({
             ))}
           </select>
           <svg
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#666] pointer-events-none"
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -157,7 +157,7 @@ export default function BenchmarkCatalog({
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-6 border-t border-[#1a1a1a]">
+            <div className="flex items-center justify-between pt-6 border-t border-border">
               {/* Previous Button */}
               <button
                 onClick={handlePreviousPage}
@@ -165,8 +165,8 @@ export default function BenchmarkCatalog({
                 className={`
                   flex items-center gap-2 text-[13px] transition-colors
                   ${currentPage === 1 
-                    ? 'text-[#666] cursor-not-allowed' 
-                    : 'text-white hover:text-[#ccc] cursor-pointer'
+                    ? 'text-muted-foreground cursor-not-allowed' 
+                    : 'text-foreground hover:text-foreground-secondary cursor-pointer'
                   }
                 `}
               >
@@ -175,9 +175,9 @@ export default function BenchmarkCatalog({
               </button>
 
               {/* Page Indicator */}
-              <div className="text-[13px] text-[#888]">
+              <div className="text-[13px] text-muted">
                 Page {currentPage} of {totalPages}
-                <span className="text-[#666] mx-2">·</span>
+                <span className="text-muted-foreground mx-2">·</span>
                 Showing {startIndex + 1}-{Math.min(endIndex, filteredBenchmarks.length)} of {filteredBenchmarks.length}
               </div>
 
@@ -188,8 +188,8 @@ export default function BenchmarkCatalog({
                 className={`
                   flex items-center gap-2 text-[13px] transition-colors
                   ${currentPage === totalPages
-                    ? 'text-[#666] cursor-not-allowed'
-                    : 'text-white hover:text-[#ccc] cursor-pointer'
+                    ? 'text-muted-foreground cursor-not-allowed'
+                    : 'text-foreground hover:text-foreground-secondary cursor-pointer'
                   }
                 `}
               >
@@ -201,7 +201,7 @@ export default function BenchmarkCatalog({
         </>
       ) : (
         <div className="text-center py-16">
-          <p className="text-[14px] text-[#666]">
+          <p className="text-[14px] text-muted-foreground">
             No benchmarks found
           </p>
           {(searchQuery || selectedCategory !== 'all') && (
@@ -210,7 +210,7 @@ export default function BenchmarkCatalog({
                 setSearchQuery('');
                 setSelectedCategory('all');
               }}
-              className="mt-4 text-[13px] text-white hover:text-[#ccc] transition-colors"
+              className="mt-4 text-[13px] text-foreground hover:text-foreground-secondary transition-colors"
             >
               Clear filters
             </button>
@@ -220,4 +220,3 @@ export default function BenchmarkCatalog({
     </div>
   );
 }
-

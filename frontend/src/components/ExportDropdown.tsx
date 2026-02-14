@@ -58,8 +58,8 @@ export default function ExportDropdown({
         disabled={disabled}
         className={`flex items-center gap-2 px-3 py-2 text-[13px] border transition-colors ${
           disabled
-            ? 'text-[#444] border-[#1a1a1a] cursor-not-allowed'
-            : 'text-[#888] border-[#222] hover:border-[#444] hover:text-white'
+            ? 'text-muted-foreground border-border cursor-not-allowed'
+            : 'text-muted border-border-secondary hover:border-muted-foreground hover:text-foreground'
         }`}
       >
         <svg
@@ -92,18 +92,18 @@ export default function ExportDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1 py-1 bg-[#111] border border-[#222] shadow-lg z-50 min-w-[140px]">
+        <div className="absolute right-0 mt-1 py-1 bg-background-tertiary border border-border-secondary shadow-lg z-50 min-w-[140px]">
           {options.map((option, index) => (
             <button
               key={index}
               onClick={() => handleOptionClick(option)}
-              className="w-full px-4 py-2 text-left text-[13px] text-[#888] hover:text-white hover:bg-[#1a1a1a] transition-colors flex items-center gap-3"
+              className="w-full px-4 py-2 text-left text-[13px] text-muted hover:text-foreground hover:bg-background-secondary transition-colors flex items-center gap-3"
             >
               <span
                 className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
                   option.format === 'csv'
-                    ? 'bg-[#1a2a1a] text-[#6a8]'
-                    : 'bg-[#1a1a2a] text-[#68a]'
+                    ? 'bg-success-bg text-success'
+                    : 'bg-accent/10 text-accent'
                 }`}
               >
                 {option.format.toUpperCase()}

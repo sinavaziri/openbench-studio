@@ -148,13 +148,13 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
     <form onSubmit={handleSubmit} className="space-y-12">
       {/* Benchmark Selection */}
       <div>
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
           Benchmark
         </p>
         <select
           value={benchmark}
           onChange={(e) => setBenchmark(e.target.value)}
-          className="w-full px-4 py-3 bg-[#0c0c0c] border border-[#222] text-white text-[15px] focus:border-white transition-colors appearance-none cursor-pointer hover:border-[#444]"
+          className="w-full px-4 py-3 bg-background border border-border-secondary text-foreground text-[15px] focus:border-foreground transition-colors appearance-none cursor-pointer hover:border-muted-foreground"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
             backgroundRepeat: 'no-repeat',
@@ -173,18 +173,18 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
 
       {/* Model Selection */}
       <div>
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
           Model
         </p>
         
         {modelsLoading && (
-          <div className="text-[13px] text-[#666] mb-3">
+          <div className="text-[13px] text-muted-foreground mb-3">
             Loading available models...
           </div>
         )}
         
         {modelsError && (
-          <div className="text-[13px] text-red-400 mb-3">
+          <div className="text-[13px] text-error mb-3">
             Error loading models: {modelsError}. You can still enter a custom model below.
           </div>
         )}
@@ -194,7 +194,7 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
           value={model}
           onChange={(e) => setModel(e.target.value)}
           disabled={modelsLoading}
-          className="w-full px-4 py-3 bg-[#0c0c0c] border border-[#222] text-white text-[15px] focus:border-white transition-colors appearance-none cursor-pointer hover:border-[#444] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full px-4 py-3 bg-background border border-border-secondary text-foreground text-[15px] focus:border-foreground transition-colors appearance-none cursor-pointer hover:border-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
             backgroundRepeat: 'no-repeat',
@@ -226,16 +226,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
               value={customModel}
               onChange={(e) => setCustomModel(e.target.value)}
               placeholder="provider/model-name"
-              className="w-full px-4 py-3 bg-transparent border border-[#222] text-white placeholder-[#444] text-[15px] focus:border-white transition-colors"
+              className="w-full px-4 py-3 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[15px] focus:border-foreground transition-colors"
             />
-            <p className="text-[13px] text-[#666] mt-2">
+            <p className="text-[13px] text-muted-foreground mt-2">
               Enter the model identifier in the format: provider/model-name
             </p>
           </div>
         )}
         
         {model && model !== 'custom' && (
-          <p className="text-[13px] text-[#666] mt-2">
+          <p className="text-[13px] text-muted-foreground mt-2">
             Selected: {model}
           </p>
         )}
@@ -243,9 +243,9 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
 
       {/* Limit Input */}
       <div>
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
           Sample Limit
-          <span className="ml-2 text-[#444] normal-case tracking-normal">(optional)</span>
+          <span className="ml-2 text-muted-foreground normal-case tracking-normal">(optional)</span>
         </p>
         <input
           id="limit"
@@ -255,19 +255,19 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
           placeholder="10"
           min={1}
           max={10000}
-          className="w-32 px-4 py-3 bg-transparent border border-[#222] text-white placeholder-[#444] text-[15px] focus:border-white transition-colors"
+          className="w-32 px-4 py-3 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[15px] focus:border-foreground transition-colors"
         />
-        <p className="text-[13px] text-[#666] mt-2">
+        <p className="text-[13px] text-muted-foreground mt-2">
           Limit the number of samples to run. Leave empty for full benchmark.
         </p>
       </div>
 
       {/* Advanced Settings Toggle */}
-      <div className="border-t border-[#1a1a1a] pt-8">
+      <div className="border-t border-border pt-8">
         <button
           type="button"
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-3 text-[13px] text-[#888] hover:text-white transition-colors group"
+          className="flex items-center gap-3 text-[13px] text-muted hover:text-foreground transition-colors group"
         >
           <span className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -276,7 +276,7 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
           </span>
           <span className="uppercase tracking-[0.1em]">Advanced Settings</span>
           {!showAdvanced && (temperature !== undefined || topP !== undefined || maxTokens !== undefined || timeout !== undefined || epochs !== undefined || maxConnections !== undefined) && (
-            <span className="text-[11px] text-[#555] normal-case tracking-normal">
+            <span className="text-[11px] text-muted-foreground normal-case tracking-normal">
               (configured)
             </span>
           )}
@@ -286,7 +286,7 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
           <div className="mt-6 grid grid-cols-2 gap-6">
             {/* Temperature */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Temperature
               </label>
               <input
@@ -297,16 +297,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 step="0.1"
                 min={0}
                 max={2}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Controls randomness (0.0 - 2.0)
               </p>
             </div>
 
             {/* Top P */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Top P
               </label>
               <input
@@ -317,16 +317,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 step="0.05"
                 min={0}
                 max={1}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Nucleus sampling (0.0 - 1.0)
               </p>
             </div>
 
             {/* Max Tokens */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Max Tokens
               </label>
               <input
@@ -336,16 +336,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 placeholder="1024"
                 min={1}
                 max={128000}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Maximum tokens per response
               </p>
             </div>
 
             {/* Timeout */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Timeout (seconds)
               </label>
               <input
@@ -355,16 +355,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 placeholder="120"
                 min={1}
                 max={3600}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Request timeout per sample
               </p>
             </div>
 
             {/* Epochs */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Epochs
               </label>
               <input
@@ -374,16 +374,16 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 placeholder="1"
                 min={1}
                 max={100}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Number of evaluation passes
               </p>
             </div>
 
             {/* Max Connections */}
             <div>
-              <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Max Connections
               </label>
               <input
@@ -393,9 +393,9 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
                 placeholder="10"
                 min={1}
                 max={100}
-                className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
               />
-              <p className="text-[12px] text-[#555] mt-1.5">
+              <p className="text-[12px] text-muted-foreground mt-1.5">
                 Concurrent API connections
               </p>
             </div>
@@ -405,28 +405,28 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
 
       {/* Selected Benchmark Info */}
       {selectedBenchmark && (
-        <div className="border-t border-[#1a1a1a] pt-8">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <div className="border-t border-border pt-8">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
             Selected Benchmark
           </p>
-          <div className="p-5 border border-[#1a1a1a] bg-[#0a0a0a]">
+          <div className="p-5 border border-border bg-background-secondary">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[17px] text-white font-medium">
+              <h3 className="text-[17px] text-foreground font-medium">
                 {selectedBenchmark.name}
               </h3>
-              <span className="px-2.5 py-1 text-[11px] text-[#888] border border-[#222] uppercase tracking-wide">
+              <span className="px-2.5 py-1 text-[11px] text-muted border border-border-secondary uppercase tracking-wide">
                 {selectedBenchmark.category}
               </span>
             </div>
-            <p className="text-[14px] text-[#888] leading-relaxed">
+            <p className="text-[14px] text-muted leading-relaxed">
               {selectedBenchmark.description || selectedBenchmark.description_short}
             </p>
             {selectedBenchmark.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#1a1a1a]">
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border">
                 {selectedBenchmark.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-2 py-1 text-[11px] text-[#666] bg-[#111] border border-[#1a1a1a]"
+                    className="px-2 py-1 text-[11px] text-muted-foreground bg-background-tertiary border border-border"
                   >
                     {tag}
                   </span>
@@ -441,7 +441,7 @@ export default function RunForm({ benchmarks, apiKeys, onSubmit, loading, prefil
       <button
         type="submit"
         disabled={!benchmark || !model || (model === 'custom' && !customModel) || loading || modelsLoading}
-        className="px-8 py-3 bg-white text-[#0c0c0c] text-[14px] tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+        className="px-8 py-3 bg-accent text-accent-foreground text-[14px] tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
       >
         {loading ? 'Starting...' : modelsLoading ? 'Loading...' : 'Start Run'}
       </button>
