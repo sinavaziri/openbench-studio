@@ -1,6 +1,12 @@
+"""
+Health and version endpoints for system status monitoring.
+"""
+
 from fastapi import APIRouter
 import subprocess
 import shutil
+
+from app.db.models import HealthResponse, VersionResponse
 
 router = APIRouter()
 
@@ -38,22 +44,65 @@ def get_openbench_version() -> str | None:
         return None
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Health check",
+    description="Simple health check endpoint to verify the API is running.",
+    responses={
+        200: {
+            "description": "API is healthy",
+            "content": {
+                "application/json": {
+                    "example": {"status": "ok"}
+                }
+            }
+        }
+    }
+)
 async def health_check():
-    """Health check endpoint."""
+    """
+    Health check endpoint.
+    
+    Returns a simple status response indicating the API is running.
+    Use this endpoint for container health checks and load balancer probes.
+    """
     return {"status": "ok"}
 
 
-@router.get("/version")
+@router.get(
+    "/version",
+    response_model=VersionResponse,
+    summary="Get version info",
+    description="Get version information for OpenBench Studio and the underlying OpenBench CLI.",
+    responses={
+        200: {
+            "description": "Version information",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "web_ui": "1.0.0",
+                        "openbench": "0.5.3",
+                        "openbench_available": True
+                    }
+                }
+            }
+        }
+    }
+)
 async def get_version():
-    """Get version information for OpenBench and the web UI."""
+    """
+    Get version information for OpenBench and the web UI.
+    
+    Returns:
+    - **web_ui**: Version of the OpenBench Studio web interface
+    - **openbench**: Version of the installed OpenBench CLI (if available)
+    - **openbench_available**: Whether the OpenBench CLI is installed and accessible
+    """
     openbench_version = get_openbench_version()
     
     return {
-        "web_ui": "0.1.0",  # Your web UI version
+        "web_ui": "1.0.0",
         "openbench": openbench_version,
         "openbench_available": openbench_version is not None,
     }
-
-
-

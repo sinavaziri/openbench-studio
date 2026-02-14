@@ -1,7 +1,14 @@
+"""
+Benchmark run management routes.
+
+Handles creating, monitoring, and managing benchmark runs.
+Includes Server-Sent Events (SSE) for real-time progress updates.
+"""
+
 import asyncio
 import os
 from datetime import datetime
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -18,7 +25,18 @@ from app.core.errors import (
     ValidationError,
     ExternalServiceError,
 )
-from app.db.models import Run, RunCreate, RunStatus, RunSummary, RunTagsUpdate, User
+from app.db.models import (
+    Run, 
+    RunCreate, 
+    RunStatus, 
+    RunSummary, 
+    RunTagsUpdate, 
+    User,
+    RunCreatedResponse,
+    MessageResponse,
+    TagsResponse,
+    BulkDeleteResponse,
+)
 from app.runner.artifacts import list_artifacts, read_command, read_log_tail, read_summary
 from app.runner.executor import executor
 from app.runner.progress_parser import parse_progress
@@ -28,13 +46,52 @@ from app.services.run_store import run_store
 router = APIRouter()
 
 
-@router.post("/runs", response_model=dict)
+@router.post(
+    "/runs",
+    response_model=RunCreatedResponse,
+    summary="Create benchmark run",
+    description="Create and start a new benchmark run.",
+    responses={
+        200: {
+            "description": "Run created and started",
+            "content": {
+                "application/json": {
+                    "example": {"run_id": "550e8400-e29b-41d4-a716-446655440000"}
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        422: {
+            "description": "Validation error",
+        }
+    }
+)
 async def create_run(
     run_create: RunCreate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
 ):
-    """Create and start a new benchmark run."""
+    """
+    Create and start a new benchmark run.
+    
+    The run is created immediately and execution begins in the background.
+    Use the returned `run_id` to monitor progress via SSE or polling.
+    
+    **Required fields:**
+    - **benchmark**: Name of the benchmark (e.g., "mmlu", "gsm8k")
+    - **model**: Model identifier (e.g., "openai/gpt-4o")
+    
+    **Optional fields:**
+    - **limit**: Limit number of samples (useful for testing)
+    - **temperature**: Sampling temperature (0=deterministic)
+    - **epochs**: Number of evaluation epochs
+    
+    **Note:** The appropriate API key must be configured for the model's provider.
+    
+    **Requires authentication.**
+    """
     run = await run_store.create_run(run_create, user_id=current_user.user_id)
     
     # Get user's API keys for the run
@@ -46,7 +103,32 @@ async def create_run(
     return {"run_id": run.run_id}
 
 
-@router.get("/runs", response_model=list[RunSummary])
+@router.get(
+    "/runs",
+    response_model=List[RunSummary],
+    summary="List runs",
+    description="List recent benchmark runs with optional filtering.",
+    responses={
+        200: {
+            "description": "List of run summaries",
+            "content": {
+                "application/json": {
+                    "example": [{
+                        "run_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "benchmark": "mmlu",
+                        "model": "openai/gpt-4o",
+                        "status": "completed",
+                        "created_at": "2024-01-15T10:30:00Z",
+                        "finished_at": "2024-01-15T10:45:00Z",
+                        "primary_metric": 0.85,
+                        "primary_metric_name": "accuracy",
+                        "tags": ["baseline"]
+                    }]
+                }
+            }
+        }
+    }
+)
 async def list_runs(
     limit: int = 50,
     search: Optional[str] = None,
@@ -58,12 +140,17 @@ async def list_runs(
     """
     List recent runs with optional filtering.
     
-    Query parameters:
-    - limit: Maximum number of runs (default 50)
-    - search: Search in benchmark and model names
-    - status: Filter by status (queued, running, completed, failed, canceled)
-    - benchmark: Filter by exact benchmark name
-    - tag: Filter by tag
+    **Query parameters:**
+    - **limit**: Maximum number of runs to return (default: 50)
+    - **search**: Search in benchmark and model names
+    - **status**: Filter by status (`queued`, `running`, `completed`, `failed`, `canceled`)
+    - **benchmark**: Filter by exact benchmark name
+    - **tag**: Filter by tag
+    
+    Returns runs owned by the current user if authenticated,
+    or all public runs if not authenticated.
+    
+    Authentication is optional for this endpoint.
     """
     user_id = current_user.user_id if current_user else None
     return await run_store.list_runs(
@@ -76,16 +163,64 @@ async def list_runs(
     )
 
 
-@router.get("/runs/tags", response_model=list[str])
+@router.get(
+    "/runs/tags",
+    response_model=List[str],
+    summary="List all tags",
+    description="Get all unique tags across all runs.",
+    responses={
+        200: {
+            "description": "List of unique tags",
+            "content": {
+                "application/json": {
+                    "example": ["baseline", "production", "v2", "experiment"]
+                }
+            }
+        }
+    }
+)
 async def list_all_tags(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
-    """Get all unique tags across all runs."""
+    """
+    Get all unique tags across all runs.
+    
+    Useful for building tag autocomplete or filter dropdowns.
+    
+    Authentication is optional for this endpoint.
+    """
     user_id = current_user.user_id if current_user else None
     return await run_store.get_all_tags(user_id=user_id)
 
 
-@router.get("/runs/{run_id}")
+@router.get(
+    "/runs/{run_id}",
+    summary="Get run details",
+    description="Get full details for a specific run including logs and artifacts.",
+    responses={
+        200: {
+            "description": "Full run details",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "run_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "benchmark": "mmlu",
+                        "model": "openai/gpt-4o",
+                        "status": "completed",
+                        "artifacts": ["stdout.log", "stderr.log", "summary.json"],
+                        "command": "bench run mmlu --model openai/gpt-4o",
+                        "stdout_tail": ["Running evaluation...", "Completed."],
+                        "stderr_tail": [],
+                        "summary": {"accuracy": 0.85}
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Run not found",
+        }
+    }
+)
 async def get_run(
     run_id: str,
     log_lines: int = 100,
@@ -94,7 +229,18 @@ async def get_run(
     """
     Get details for a specific run.
     
-    Returns full run metadata including config, command, artifacts, logs, and summary.
+    Returns full run metadata including:
+    - Run configuration and status
+    - List of available artifacts
+    - Reproducible command
+    - Tail of stdout/stderr logs
+    - Summary results (if completed)
+    
+    **Parameters:**
+    - **run_id**: The unique run identifier
+    - **log_lines**: Number of log lines to include (default: 100)
+    
+    Authentication is optional for this endpoint.
     """
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
@@ -119,12 +265,43 @@ async def get_run(
     return response
 
 
-@router.post("/runs/{run_id}/cancel")
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=MessageResponse,
+    summary="Cancel run",
+    description="Cancel a running benchmark.",
+    responses={
+        200: {
+            "description": "Run canceled",
+            "content": {
+                "application/json": {
+                    "example": {"status": "canceled"}
+                }
+            }
+        },
+        400: {
+            "description": "Run is not currently running",
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        }
+    }
+)
 async def cancel_run(
     run_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Cancel a running benchmark."""
+    """
+    Cancel a running benchmark.
+    
+    Sends a termination signal to the running process.
+    The run status will be updated to `canceled`.
+    
+    **Requires authentication.**
+    """
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
         raise RunNotFoundError(run_id)
@@ -136,7 +313,34 @@ async def cancel_run(
     return {"status": "canceled"}
 
 
-@router.delete("/runs/{run_id}")
+@router.delete(
+    "/runs/{run_id}",
+    response_model=MessageResponse,
+    summary="Delete run",
+    description="Delete a run and all its artifacts.",
+    responses={
+        200: {
+            "description": "Run deleted",
+            "content": {
+                "application/json": {
+                    "example": {"status": "deleted"}
+                }
+            }
+        },
+        400: {
+            "description": "Cannot delete a running benchmark",
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        },
+        500: {
+            "description": "Failed to delete run",
+        }
+    }
+)
 async def delete_run(
     run_id: str,
     current_user: User = Depends(get_current_user),
@@ -144,7 +348,15 @@ async def delete_run(
     """
     Delete a run and all its artifacts.
     
-    Cannot delete runs that are currently running.
+    This permanently removes:
+    - Run metadata from the database
+    - All log files and artifacts
+    - Evaluation results
+    
+    **Note:** Cannot delete runs that are currently running.
+    Cancel the run first.
+    
+    **Requires authentication.**
     """
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
@@ -163,16 +375,56 @@ async def delete_run(
     return {"status": "deleted"}
 
 
-@router.post("/runs/bulk-delete")
+@router.post(
+    "/runs/bulk-delete",
+    response_model=BulkDeleteResponse,
+    summary="Bulk delete runs",
+    description="Delete multiple runs at once.",
+    responses={
+        200: {
+            "description": "Bulk delete results",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "completed",
+                        "summary": {
+                            "total": 5,
+                            "deleted": 3,
+                            "failed": 0,
+                            "running": 1,
+                            "not_found": 1
+                        },
+                        "details": {
+                            "deleted": ["id1", "id2", "id3"],
+                            "failed": [],
+                            "running": ["id4"],
+                            "not_found": ["id5"]
+                        }
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        }
+    }
+)
 async def bulk_delete_runs(
-    run_ids: list[str],
+    run_ids: List[str],
     current_user: User = Depends(get_current_user),
 ):
     """
     Delete multiple runs at once.
     
-    Returns a summary of successes and failures.
-    Cannot delete runs that are currently running.
+    Returns a summary of successes and failures for each run.
+    
+    **Behavior:**
+    - Running runs are skipped (listed in `running`)
+    - Non-existent runs are skipped (listed in `not_found`)
+    - Successfully deleted runs are in `deleted`
+    - Failed deletions are in `failed`
+    
+    **Requires authentication.**
     """
     results = {
         "deleted": [],
@@ -211,7 +463,31 @@ async def bulk_delete_runs(
     }
 
 
-@router.patch("/runs/{run_id}/tags")
+@router.patch(
+    "/runs/{run_id}/tags",
+    response_model=TagsResponse,
+    summary="Update run tags",
+    description="Update tags for a run.",
+    responses={
+        200: {
+            "description": "Updated tags",
+            "content": {
+                "application/json": {
+                    "example": {"tags": ["baseline", "production", "v2"]}
+                }
+            }
+        },
+        401: {
+            "description": "Not authenticated",
+        },
+        404: {
+            "description": "Run not found",
+        },
+        500: {
+            "description": "Failed to update tags",
+        }
+    }
+)
 async def update_run_tags(
     run_id: str,
     tags_update: RunTagsUpdate,
@@ -220,7 +496,14 @@ async def update_run_tags(
     """
     Update tags for a run.
     
-    Tags are normalized (lowercase, unique, sorted).
+    Tags are:
+    - Normalized to lowercase
+    - Deduplicated
+    - Sorted alphabetically
+    
+    This replaces all existing tags with the new list.
+    
+    **Requires authentication.**
     """
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
@@ -262,18 +545,50 @@ def format_sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
 
-@router.get("/runs/{run_id}/events")
+@router.get(
+    "/runs/{run_id}/events",
+    summary="Stream run events (SSE)",
+    description="Stream real-time run events via Server-Sent Events.",
+    responses={
+        200: {
+            "description": "SSE event stream",
+            "content": {
+                "text/event-stream": {
+                    "example": "event: status\ndata: {\"status\": \"running\"}\n\n"
+                }
+            }
+        },
+        404: {
+            "description": "Run not found",
+        }
+    }
+)
 async def stream_run_events(run_id: str, request: Request):
     """
     Stream run events via Server-Sent Events (SSE).
     
-    Events:
-    - status: Current run status
-    - log_line: New log output (stdout or stderr)
-    - progress: Best-effort progress extraction
-    - completed: Run finished successfully
-    - failed: Run failed
-    - canceled: Run was canceled
+    Connect to this endpoint to receive real-time updates about a run.
+    The connection stays open until the run completes or is canceled.
+    
+    **Event types:**
+    - `status`: Run status changed (running, completed, etc.)
+    - `log_line`: New log output with `stream` (stdout/stderr) and `line`
+    - `progress`: Best-effort progress extraction with percentage/current/total
+    - `completed`: Run finished successfully
+    - `failed`: Run failed with error details
+    - `canceled`: Run was canceled
+    - `heartbeat`: Keep-alive sent every ~5 seconds
+    
+    **Example client (JavaScript):**
+    ```javascript
+    const events = new EventSource('/api/runs/{run_id}/events');
+    events.addEventListener('log_line', (e) => {
+        const data = JSON.parse(e.data);
+        console.log(data.line);
+    });
+    ```
+    
+    Authentication is not required for this endpoint.
     """
     run = await run_store.get_run(run_id)
     if run is None:
@@ -372,7 +687,27 @@ async def stream_run_events(run_id: str, request: Request):
     )
 
 
-@router.get("/runs/{run_id}/artifacts/{artifact_path:path}")
+@router.get(
+    "/runs/{run_id}/artifacts/{artifact_path:path}",
+    summary="Download artifact",
+    description="Download a specific artifact file from a run.",
+    responses={
+        200: {
+            "description": "Artifact file",
+            "content": {
+                "application/octet-stream": {},
+                "application/json": {},
+                "text/plain": {},
+            }
+        },
+        403: {
+            "description": "Access forbidden (path traversal attempt)",
+        },
+        404: {
+            "description": "Run or artifact not found",
+        }
+    }
+)
 async def download_artifact(
     run_id: str,
     artifact_path: str,
@@ -381,7 +716,18 @@ async def download_artifact(
     """
     Download a specific artifact file from a run.
     
-    Supports nested paths like 'logs/file.eval'.
+    Supports nested paths like `logs/file.eval` or `results/summary.json`.
+    
+    **Common artifacts:**
+    - `stdout.log`: Standard output from the benchmark
+    - `stderr.log`: Standard error output
+    - `summary.json`: Evaluation summary and metrics
+    - `*.eval`: Inspect AI evaluation logs
+    
+    **Security:** Path traversal is prevented; the path must resolve
+    within the run's artifact directory.
+    
+    Authentication is optional for this endpoint.
     """
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
@@ -431,16 +777,66 @@ async def download_artifact(
     )
 
 
-@router.get("/runs/{run_id}/eval-data/{eval_path:path}")
+@router.get(
+    "/runs/{run_id}/eval-data/{eval_path:path}",
+    summary="Get parsed eval data",
+    description="Parse and return structured data from an .eval file for viewing in the UI.",
+    responses={
+        200: {
+            "description": "Parsed evaluation data",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "eval_name": "mmlu",
+                        "model": "openai/gpt-4o",
+                        "total_samples": 100,
+                        "metrics": {
+                            "accuracy": {"value": 0.85, "name": "accuracy"}
+                        },
+                        "samples": [
+                            {"id": 1, "input": "...", "output": "...", "score": {"value": 1.0}}
+                        ]
+                    }
+                }
+            }
+        },
+        403: {
+            "description": "Access forbidden",
+        },
+        404: {
+            "description": "Run or eval file not found",
+        },
+        422: {
+            "description": "Only .eval files can be parsed",
+        },
+        500: {
+            "description": "Failed to parse evaluation results",
+        },
+        502: {
+            "description": "inspect_ai package not available",
+        }
+    }
+)
 async def get_eval_data(
     run_id: str,
     eval_path: str,
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    Parse and return structured data from an .eval file for viewing in the UI.
+    Parse and return structured data from an .eval file.
     
-    Returns JSON with evaluation results, metrics, and sample details.
+    This endpoint parses Inspect AI evaluation logs and returns
+    a structured JSON response for display in the web UI.
+    
+    **Returns:**
+    - Evaluation metadata (name, model, timestamps)
+    - Aggregate metrics (accuracy, scores, etc.)
+    - Individual sample results (limited to first 100)
+    
+    **Note:** Requires the `inspect_ai` package to be installed.
+    
+    Authentication is optional for this endpoint.
     """
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
@@ -545,34 +941,27 @@ async def get_eval_data(
                 
                 # Extract score
                 if sample.scores:
-                    print(f"DEBUG: sample.scores type: {type(sample.scores)}")
-                    print(f"DEBUG: sample.scores: {sample.scores}")
                     # sample.scores is a dictionary of scorer_name -> score_data
                     if isinstance(sample.scores, dict):
                         # Get the first score from the dictionary
                         score_name, score_data = next(iter(sample.scores.items()))
-                        print(f"DEBUG: score_name: {score_name}, score_data: {score_data}, score_data type: {type(score_data)}")
                         if isinstance(score_data, dict):
                             # Try to convert value to float, handle cases where it's a string
                             score_value = None
                             try:
                                 if score_data.get('value') is not None:
                                     score_value = float(score_data['value'])
-                            except (ValueError, TypeError) as e:
-                                print(f"DEBUG: Failed to convert score value to float: {e}")
+                            except (ValueError, TypeError):
                                 # If value is not numeric (e.g., "C"), compute correctness score
                                 # by comparing answer to target (1.0 if match, 0.0 if not)
                                 if 'answer' in score_data and sample.target:
                                     score_value = 1.0 if str(score_data['answer']) == str(sample.target) else 0.0
-                                    print(f"DEBUG: Computed score from answer: {score_value}")
                             
                             sample_data["score"] = {
                                 "value": score_value,
                                 "name": score_name,
                                 "explanation": score_data.get('explanation'),
                             }
-                        else:
-                            print(f"DEBUG: score_data is not a dict, it has attributes: {dir(score_data)}")
                     elif hasattr(sample.scores, 'value'):
                         # Fallback for older formats
                         score_value = None
@@ -608,4 +997,3 @@ async def get_eval_data(
             message="Failed to parse evaluation results",
             detail=f"The evaluation file could not be parsed: {str(e)}. The file may be corrupted or in an unexpected format."
         )
-
