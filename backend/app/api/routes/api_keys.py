@@ -5,6 +5,7 @@ API Keys routes for managing provider API keys.
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import get_current_user
+from app.core.errors import ApiKeyNotFoundError
 from app.db.models import ApiKeyCreate, ApiKeyPublic, User, PREDEFINED_PROVIDERS
 from app.services.api_keys import api_key_service
 from app.services.model_discovery import model_discovery_service
@@ -47,10 +48,7 @@ async def delete_api_key(
     """
     deleted = await api_key_service.delete_key(current_user.user_id, provider)
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No API key found for provider: {provider}",
-        )
+        raise ApiKeyNotFoundError(provider)
     return {"status": "deleted"}
 
 

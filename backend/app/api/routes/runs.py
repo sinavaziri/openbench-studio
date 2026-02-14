@@ -8,6 +8,15 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.auth import get_current_user, get_optional_user
 from app.core.config import RUNS_DIR
+from app.core.errors import (
+    RunNotFoundError,
+    RunStillRunningError,
+    RunNotRunningError,
+    ForbiddenError,
+    NotFoundError,
+    ServerError,
+    ValidationError,
+)
 from app.db.models import Run, RunCreate, RunStatus, RunSummary, RunTagsUpdate, User
 from app.runner.artifacts import list_artifacts, read_command, read_log_tail, read_summary
 from app.runner.executor import executor
@@ -89,7 +98,7 @@ async def get_run(
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     # Build response with additional info
     response = run.model_dump()
@@ -117,11 +126,11 @@ async def cancel_run(
     """Cancel a running benchmark."""
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     success = await executor.cancel_run(run_id)
     if not success:
-        raise HTTPException(status_code=400, detail="Run is not currently running")
+        raise RunNotRunningError()
     
     return {"status": "canceled"}
 
@@ -138,14 +147,17 @@ async def delete_run(
     """
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     if run.status == RunStatus.RUNNING:
-        raise HTTPException(status_code=400, detail="Cannot delete a running benchmark. Cancel it first.")
+        raise RunStillRunningError(action="delete")
     
     success = await run_store.delete_run(run_id, user_id=current_user.user_id)
     if not success:
-        raise HTTPException(status_code=400, detail="Failed to delete run")
+        raise ServerError(
+            message="Failed to delete run",
+            detail="An error occurred while deleting the run. Please try again."
+        )
     
     return {"status": "deleted"}
 
@@ -211,11 +223,14 @@ async def update_run_tags(
     """
     run = await run_store.get_run(run_id, user_id=current_user.user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     updated_run = await run_store.update_tags(run_id, tags_update.tags, user_id=current_user.user_id)
     if updated_run is None:
-        raise HTTPException(status_code=400, detail="Failed to update tags")
+        raise ServerError(
+            message="Failed to update tags",
+            detail="An error occurred while saving the tags. Please try again."
+        )
     
     return {"tags": updated_run.tags}
 
@@ -370,7 +385,7 @@ async def download_artifact(
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     # Build the full path and validate it's within the run directory
     artifact_dir = RUNS_DIR / run_id
@@ -381,12 +396,23 @@ async def download_artifact(
         file_path = file_path.resolve()
         artifact_dir = artifact_dir.resolve()
         if not str(file_path).startswith(str(artifact_dir)):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError(
+                message="Access to this file is not allowed",
+                detail="The requested path is outside the run directory."
+            )
+    except ForbiddenError:
+        raise
     except Exception:
-        raise HTTPException(status_code=403, detail="Invalid path")
+        raise ForbiddenError(
+            message="Invalid file path",
+            detail="The requested path could not be resolved."
+        )
     
     if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Artifact not found")
+        raise NotFoundError(
+            resource="Artifact",
+            detail=f"File '{artifact_path}' not found in this run's artifacts."
+        )
     
     # Determine media type based on file extension
     media_type = "application/octet-stream"

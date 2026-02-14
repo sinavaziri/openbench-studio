@@ -73,7 +73,7 @@ export default function EvalViewer() {
     return (
       <Layout>
         <div className="flex items-center justify-center py-16">
-          <div className="text-[15px] text-[#666]">Loading evaluation data...</div>
+          <div className="text-[15px] text-muted-foreground">Loading evaluation data...</div>
         </div>
       </Layout>
     );
@@ -83,10 +83,10 @@ export default function EvalViewer() {
     return (
       <Layout>
         <div className="text-center py-16">
-          <p className="text-[15px] text-[#888] mb-4">{error || 'Failed to load evaluation'}</p>
+          <p className="text-[15px] text-muted mb-4">{error || 'Failed to load evaluation'}</p>
           <button
             onClick={() => navigate(`/runs/${id}`)}
-            className="text-[14px] text-white hover:opacity-70 transition-opacity"
+            className="text-[14px] text-foreground hover:opacity-70 transition-opacity"
           >
             ← Back to Run
           </button>
@@ -111,14 +111,14 @@ export default function EvalViewer() {
       <div className="mb-8">
         <Link
           to={`/runs/${id}`}
-          className="text-[13px] text-[#666] hover:text-white transition-colors mb-4 inline-block"
+          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-4 inline-block"
         >
           ← Back to Run
         </Link>
-        <h1 className="text-[28px] text-white tracking-tight mb-2">
+        <h1 className="text-[28px] text-foreground tracking-tight mb-2">
           Evaluation Results
         </h1>
-        <p className="text-[15px] text-[#666]">
+        <p className="text-[15px] text-muted-foreground">
           {evalData.eval_name} • {evalData.model}
         </p>
       </div>
@@ -126,35 +126,35 @@ export default function EvalViewer() {
       {/* Metrics Cards */}
       <div className="grid grid-cols-4 gap-6 mb-12">
         {/* Total Samples */}
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-6">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+        <div className="bg-background-secondary border border-border p-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
             Total Samples
           </p>
-          <p className="text-[32px] text-white font-light">
+          <p className="text-[32px] text-foreground font-light">
             {evalData.total_samples}
           </p>
         </div>
 
         {/* Pass Rate */}
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-6">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+        <div className="bg-background-secondary border border-border p-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
             Pass Rate
           </p>
-          <p className="text-[32px] text-white font-light">
+          <p className="text-[32px] text-foreground font-light">
             {passRate}%
           </p>
-          <p className="text-[12px] text-[#555] mt-1">
+          <p className="text-[12px] text-muted-foreground mt-1">
             {passedSamples.length} / {samplesWithScores.length}
           </p>
         </div>
 
         {/* Primary Metrics */}
         {Object.entries(evalData.metrics).slice(0, 2).map(([key, metric]) => (
-          <div key={key} className="bg-[#0a0a0a] border border-[#1a1a1a] p-6">
-            <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+          <div key={key} className="bg-background-secondary border border-border p-6">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
               {metric.name}
             </p>
-            <p className="text-[32px] text-white font-light">
+            <p className="text-[32px] text-foreground font-light">
               {metric.value !== null ? metric.value.toFixed(3) : 'N/A'}
             </p>
           </div>
@@ -164,7 +164,7 @@ export default function EvalViewer() {
       {/* Samples Section */}
       <div className="mb-12">
         <div className="mb-6">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
             Samples ({filteredSamples.length})
           </p>
         </div>
@@ -179,19 +179,19 @@ export default function EvalViewer() {
             return (
               <div
                 key={sample.id}
-                className="bg-[#0a0a0a] border border-[#1a1a1a] overflow-hidden"
+                className="bg-background-secondary border border-border overflow-hidden"
               >
                 {/* Sample Header */}
                 <button
                   onClick={() => setExpandedSample(isExpanded ? null : sample.id)}
-                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-[#0f0f0f] transition-colors text-left"
+                  className="w-full px-6 py-4 flex items-center justify-between hover:bg-background-tertiary transition-colors text-left"
                 >
                   <div className="flex items-center gap-4 flex-1">
-                    <span className="text-[13px] text-[#666] font-mono">
+                    <span className="text-[13px] text-muted-foreground font-mono">
                       Sample {sample.id}
                     </span>
                     {sample.input && (
-                      <span className="text-[14px] text-[#888] truncate max-w-md">
+                      <span className="text-[14px] text-muted truncate max-w-md">
                         {sample.input}
                       </span>
                     )}
@@ -201,17 +201,17 @@ export default function EvalViewer() {
                       <span
                         className={`px-3 py-1 text-[11px] uppercase tracking-wide ${
                           passed
-                            ? 'bg-[#1a2a1a] text-[#6c6] border border-[#2a4a2a]'
+                            ? 'bg-success-bg text-success border border-success-border'
                             : failed
-                            ? 'bg-[#2a1a1a] text-[#c66] border border-[#4a2a2a]'
-                            : 'bg-[#1a1a1a] text-[#666] border border-[#222]'
+                            ? 'bg-error-bg text-error border border-error-border'
+                            : 'bg-background-tertiary text-muted-foreground border border-border-secondary'
                         }`}
                       >
                         {sample.score.value !== null ? sample.score.value.toFixed(2) : 'N/A'}
                       </span>
                     )}
                     <svg
-                      className={`w-4 h-4 text-[#666] transition-transform ${
+                      className={`w-4 h-4 text-muted-foreground transition-transform ${
                         isExpanded ? 'rotate-90' : ''
                       }`}
                       fill="none"
@@ -230,14 +230,14 @@ export default function EvalViewer() {
 
                 {/* Expanded Sample Details */}
                 {isExpanded && (
-                  <div className="px-6 pb-6 border-t border-[#1a1a1a] pt-6 space-y-6">
+                  <div className="px-6 pb-6 border-t border-border pt-6 space-y-6">
                     {/* Input */}
                     {sample.input && (
                       <div>
-                        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                           Input
                         </p>
-                        <pre className="text-[13px] text-[#aaa] font-mono whitespace-pre-wrap bg-[#111] p-4 border border-[#1a1a1a] rounded">
+                        <pre className="text-[13px] text-foreground-secondary font-mono whitespace-pre-wrap bg-background-tertiary p-4 border border-border rounded">
                           {sample.input}
                         </pre>
                       </div>
@@ -246,10 +246,10 @@ export default function EvalViewer() {
                     {/* Output */}
                     {sample.output && (
                       <div>
-                        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                           Output
                         </p>
-                        <pre className="text-[13px] text-[#aaa] font-mono whitespace-pre-wrap bg-[#111] p-4 border border-[#1a1a1a] rounded">
+                        <pre className="text-[13px] text-foreground-secondary font-mono whitespace-pre-wrap bg-background-tertiary p-4 border border-border rounded">
                           {sample.output}
                         </pre>
                       </div>
@@ -258,10 +258,10 @@ export default function EvalViewer() {
                     {/* Target */}
                     {sample.target && (
                       <div>
-                        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                           Expected
                         </p>
-                        <pre className="text-[13px] text-[#aaa] font-mono whitespace-pre-wrap bg-[#111] p-4 border border-[#1a1a1a] rounded">
+                        <pre className="text-[13px] text-foreground-secondary font-mono whitespace-pre-wrap bg-background-tertiary p-4 border border-border rounded">
                           {sample.target}
                         </pre>
                       </div>
@@ -270,10 +270,10 @@ export default function EvalViewer() {
                     {/* Score Explanation */}
                     {sample.score?.explanation && (
                       <div>
-                        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                           Evaluation
                         </p>
-                        <p className="text-[13px] text-[#888] leading-relaxed">
+                        <p className="text-[13px] text-muted leading-relaxed">
                           {sample.score.explanation}
                         </p>
                       </div>
@@ -282,10 +282,10 @@ export default function EvalViewer() {
                     {/* Error */}
                     {sample.error && (
                       <div>
-                        <p className="text-[11px] text-[#c66] uppercase tracking-[0.1em] mb-2">
+                        <p className="text-[11px] text-error uppercase tracking-[0.1em] mb-2">
                           Error
                         </p>
-                        <pre className="text-[13px] text-[#c66] font-mono whitespace-pre-wrap bg-[#1a0a0a] p-4 border border-[#3a1a1a] rounded">
+                        <pre className="text-[13px] text-error font-mono whitespace-pre-wrap bg-error-bg p-4 border border-error-border rounded">
                           {sample.error}
                         </pre>
                       </div>
@@ -298,7 +298,7 @@ export default function EvalViewer() {
         </div>
 
         {filteredSamples.length === 0 && (
-          <div className="text-center py-12 text-[#555]">
+          <div className="text-center py-12 text-muted-foreground">
             No samples match the selected filter
           </div>
         )}
@@ -306,4 +306,3 @@ export default function EvalViewer() {
     </Layout>
   );
 }
-

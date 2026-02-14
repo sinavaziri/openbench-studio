@@ -5,6 +5,7 @@ Authentication routes for user registration, login, and profile.
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import get_current_user
+from app.core.errors import InvalidCredentialsError, EmailExistsError
 from app.db.models import Token, User, UserCreate, UserLogin, UserPublic
 from app.services.auth import auth_service
 
@@ -20,10 +21,7 @@ async def register(user_create: UserCreate):
     """
     user = await auth_service.create_user(user_create)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
+        raise EmailExistsError(user_create.email)
     return auth_service.create_user_token(user)
 
 
@@ -36,10 +34,7 @@ async def login(user_login: UserLogin):
     """
     user = await auth_service.authenticate_user(user_login.email, user_login.password)
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
-        )
+        raise InvalidCredentialsError()
     return auth_service.create_user_token(user)
 
 

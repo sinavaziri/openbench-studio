@@ -1,4 +1,5 @@
 import type { Breakdown } from '../api/client';
+import { useTheme } from '../context/ThemeContext';
 
 interface BreakdownChartProps {
   breakdowns: Breakdown[];
@@ -20,14 +21,23 @@ function formatKey(key: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// Generate a subtle color based on index
-function getBarColor(index: number, total: number): string {
-  // Use subtle grayscale with slight variation
-  const baseGray = 255;
-  const minGray = 180;
-  const step = (baseGray - minGray) / Math.max(total, 1);
-  const gray = Math.round(baseGray - (index * step));
-  return `rgb(${gray}, ${gray}, ${gray})`;
+// Generate a subtle color based on index and theme
+function getBarColor(index: number, total: number, isDark: boolean): string {
+  if (isDark) {
+    // Dark theme: white to gray
+    const baseGray = 255;
+    const minGray = 180;
+    const step = (baseGray - minGray) / Math.max(total, 1);
+    const gray = Math.round(baseGray - (index * step));
+    return `rgb(${gray}, ${gray}, ${gray})`;
+  } else {
+    // Light theme: dark to lighter gray
+    const baseGray = 30;
+    const maxGray = 120;
+    const step = (maxGray - baseGray) / Math.max(total, 1);
+    const gray = Math.round(baseGray + (index * step));
+    return `rgb(${gray}, ${gray}, ${gray})`;
+  }
 }
 
 interface BreakdownSectionProps {
@@ -35,13 +45,16 @@ interface BreakdownSectionProps {
 }
 
 function BreakdownSection({ breakdown }: BreakdownSectionProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  
   // Find max value for scaling
   const maxValue = Math.max(...breakdown.items.map((item) => item.value), 0.01);
   const sortedItems = [...breakdown.items].sort((a, b) => b.value - a.value);
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] text-[#666] uppercase tracking-[0.1em]">
+      <p className="text-[12px] text-muted-foreground uppercase tracking-[0.1em]">
         {formatKey(breakdown.name)}
       </p>
       
@@ -52,19 +65,19 @@ function BreakdownSection({ breakdown }: BreakdownSectionProps) {
           return (
             <div key={item.key} className="group">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[13px] text-[#888] truncate max-w-[60%]">
+                <span className="text-[13px] text-muted truncate max-w-[60%]">
                   {formatKey(item.key)}
                 </span>
-                <span className="text-[13px] text-white tabular-nums ml-2">
+                <span className="text-[13px] text-foreground tabular-nums ml-2">
                   {formatValue(item.value)}
                 </span>
               </div>
-              <div className="h-2 bg-[#111] rounded-sm overflow-hidden">
+              <div className="h-2 bg-background-tertiary rounded-sm overflow-hidden">
                 <div
                   className="h-full transition-all duration-500 ease-out"
                   style={{
                     width: `${percentage}%`,
-                    backgroundColor: getBarColor(index, sortedItems.length),
+                    backgroundColor: getBarColor(index, sortedItems.length, isDark),
                   }}
                 />
               </div>
@@ -83,7 +96,7 @@ export default function BreakdownChart({ breakdowns }: BreakdownChartProps) {
 
   return (
     <div className="space-y-8">
-      <p className="text-[11px] text-[#555] uppercase tracking-[0.15em]">
+      <p className="text-[11px] text-muted-foreground uppercase tracking-[0.15em]">
         Breakdown
       </p>
       
@@ -91,7 +104,7 @@ export default function BreakdownChart({ breakdowns }: BreakdownChartProps) {
         {breakdowns.map((breakdown) => (
           <div
             key={breakdown.name}
-            className="bg-[#0a0a0a] border border-[#1a1a1a] p-6"
+            className="bg-background-secondary border border-border p-6"
           >
             <BreakdownSection breakdown={breakdown} />
           </div>
@@ -100,6 +113,3 @@ export default function BreakdownChart({ breakdowns }: BreakdownChartProps) {
     </div>
   );
 }
-
-
-

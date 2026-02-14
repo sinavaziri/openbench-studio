@@ -67,12 +67,12 @@ export default function LogTail({
   const lineCount = content ? content.split('\n').length : 0;
 
   return (
-    <div className="border border-[#1a1a1a]">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
+    <div className="border border-border">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="text-[12px] text-[#666]">{title}</span>
+          <span className="text-[12px] text-muted-foreground">{title}</span>
           {lineCount > 0 && (
-            <span className="text-[11px] text-[#444]">
+            <span className="text-[11px] text-muted-foreground">
               {lineCount} lines
             </span>
           )}
@@ -83,7 +83,7 @@ export default function LogTail({
           {userScrolled && autoScroll && (
             <button
               onClick={scrollToBottom}
-              className="px-2 py-1 text-[11px] text-[#888] border border-[#333] hover:border-[#555] hover:text-white transition-colors flex items-center gap-1"
+              className="px-2 py-1 text-[11px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M5 2V8M2 5L5 8L8 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -98,8 +98,8 @@ export default function LogTail({
               onClick={toggleAutoScroll}
               className={`px-2 py-1 text-[11px] border transition-colors ${
                 autoScroll && !userScrolled
-                  ? 'text-white border-[#444] bg-[#1a1a1a]'
-                  : 'text-[#666] border-[#222] hover:border-[#333] hover:text-[#888]'
+                  ? 'text-foreground border-muted-foreground bg-background-tertiary'
+                  : 'text-muted-foreground border-border hover:border-border-secondary hover:text-muted'
               }`}
               title={autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll'}
             >
@@ -112,9 +112,9 @@ export default function LogTail({
       <pre
         ref={scrollRef}
         onScroll={handleScroll}
-        className="p-4 text-[13px] font-mono text-[#888] overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-words bg-[#080808]"
+        className="p-4 text-[13px] font-mono text-muted overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap break-words bg-background-secondary"
       >
-        {content || <span className="text-[#444] italic">No output yet...</span>}
+        {content || <span className="text-muted-foreground italic">No output yet...</span>}
       </pre>
     </div>
   );

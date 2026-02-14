@@ -37,16 +37,16 @@ export default function MetricCards({ primaryMetric, metrics }: MetricCardsProps
       {/* Primary Metric - Large Card */}
       {primaryMetric && (
         <div className="relative">
-          <div className="absolute -inset-px bg-gradient-to-r from-[#2a2a2a] to-transparent opacity-50 rounded-sm" />
-          <div className="relative bg-[#0a0a0a] border border-[#1a1a1a] px-8 py-6">
-            <p className="text-[11px] text-[#555] uppercase tracking-[0.15em] mb-3">
+          <div className="absolute -inset-px bg-gradient-to-r from-border-secondary to-transparent opacity-50 rounded-sm" />
+          <div className="relative bg-background-secondary border border-border px-8 py-6">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.15em] mb-3">
               Primary Metric
             </p>
             <div className="flex items-baseline gap-3">
-              <span className="text-[48px] text-white font-light tracking-tight tabular-nums">
+              <span className="text-[48px] text-foreground font-light tracking-tight tabular-nums">
                 {formatValue(primaryMetric.value, primaryMetric.unit)}
               </span>
-              <span className="text-[15px] text-[#666]">
+              <span className="text-[15px] text-muted-foreground">
                 {formatMetricName(primaryMetric.name)}
               </span>
             </div>
@@ -57,19 +57,19 @@ export default function MetricCards({ primaryMetric, metrics }: MetricCardsProps
       {/* Additional Metrics Grid */}
       {additionalMetrics.length > 0 && (
         <div>
-          <p className="text-[11px] text-[#555] uppercase tracking-[0.15em] mb-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.15em] mb-4">
             Additional Metrics
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {additionalMetrics.map((metric) => (
               <div
                 key={metric.name}
-                className="bg-[#0a0a0a] border border-[#1a1a1a] px-5 py-4"
+                className="bg-background-secondary border border-border px-5 py-4"
               >
-                <p className="text-[11px] text-[#555] uppercase tracking-[0.1em] mb-2 truncate">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2 truncate">
                   {formatMetricName(metric.name)}
                 </p>
-                <p className="text-[24px] text-white font-light tabular-nums">
+                <p className="text-[24px] text-foreground font-light tabular-nums">
                   {formatValue(metric.value, metric.unit)}
                 </p>
               </div>
@@ -81,7 +81,7 @@ export default function MetricCards({ primaryMetric, metrics }: MetricCardsProps
       {/* No metrics state */}
       {!primaryMetric && metrics.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-[14px] text-[#555]">
+          <p className="text-[14px] text-muted-foreground">
             No structured metrics available
           </p>
         </div>
@@ -89,6 +89,3 @@ export default function MetricCards({ primaryMetric, metrics }: MetricCardsProps
     </div>
   );
 }
-
-
-

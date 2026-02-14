@@ -4,6 +4,7 @@ export default {
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
@@ -17,10 +18,27 @@ export default {
         bold: '600',
       },
       colors: {
-        background: '#0c0c0c',
-        foreground: '#ffffff',
-        muted: '#888888',
-        border: '#222222',
+        // Theme-aware colors using CSS variables
+        background: 'var(--color-background)',
+        'background-secondary': 'var(--color-background-secondary)',
+        'background-tertiary': 'var(--color-background-tertiary)',
+        foreground: 'var(--color-foreground)',
+        'foreground-secondary': 'var(--color-foreground-secondary)',
+        muted: 'var(--color-muted)',
+        'muted-foreground': 'var(--color-muted-foreground)',
+        border: 'var(--color-border)',
+        'border-secondary': 'var(--color-border-secondary)',
+        accent: 'var(--color-accent)',
+        'accent-foreground': 'var(--color-accent-foreground)',
+        success: 'var(--color-success)',
+        'success-bg': 'var(--color-success-bg)',
+        'success-border': 'var(--color-success-border)',
+        error: 'var(--color-error)',
+        'error-bg': 'var(--color-error-bg)',
+        'error-border': 'var(--color-error-border)',
+        warning: 'var(--color-warning)',
+        'warning-bg': 'var(--color-warning-bg)',
+        'warning-border': 'var(--color-warning-border)',
       },
       letterSpacing: {
         tight: '-0.02em',

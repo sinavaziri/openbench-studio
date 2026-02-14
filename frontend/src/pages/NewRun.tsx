@@ -201,10 +201,10 @@ export default function NewRun() {
     <Layout>
       {/* About Section */}
       <div className="mb-12">
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
           About
         </p>
-        <p className="text-[15px] text-white leading-relaxed max-w-2xl">
+        <p className="text-[15px] text-foreground leading-relaxed max-w-2xl">
           OpenBench is a benchmarking platform for evaluating AI models. 
           Monitor runs, compare results, and track performance across different evaluations.
         </p>
@@ -212,13 +212,13 @@ export default function NewRun() {
 
       {/* API Keys Warning */}
       {!loading && !hasApiKeys && (
-        <div className="mb-8 py-4 px-5 bg-[#1a1500] border border-[#3a3000]">
-          <p className="text-[14px] text-[#c9a227] mb-2">
+        <div className="mb-8 py-4 px-5 bg-warning-bg border border-warning-border">
+          <p className="text-[14px] text-warning mb-2">
             ⚠ No API keys configured
           </p>
-          <p className="text-[13px] text-[#8a7020]">
+          <p className="text-[13px] text-warning/70">
             You need to add at least one API key to run benchmarks.{' '}
-            <Link to="/settings" className="text-[#c9a227] hover:underline">
+            <Link to="/settings" className="text-warning hover:underline">
               Go to Settings →
             </Link>
           </p>
@@ -227,7 +227,7 @@ export default function NewRun() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-8 py-3 px-4 bg-[#1a0a0a] border border-[#3a1a1a] text-[14px] text-[#c44]">
+        <div className="mb-8 py-3 px-4 bg-error-bg border border-error-border text-[14px] text-error">
           {error}
         </div>
       )}
@@ -235,10 +235,10 @@ export default function NewRun() {
       {/* Benchmark Catalog */}
       {loading || authLoading ? (
         <div className="mb-12">
-          <div className="h-6 w-48 bg-[#1a1a1a] animate-pulse mb-6" />
+          <div className="h-6 w-48 bg-border animate-pulse mb-6" />
           <div className="grid grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-40 bg-[#1a1a1a] animate-pulse" />
+              <div key={i} className="h-40 bg-border animate-pulse" />
             ))}
           </div>
         </div>
@@ -251,8 +251,8 @@ export default function NewRun() {
       )}
 
       {/* Configuration Form - Always visible */}
-      <div ref={formRef} className="max-w-2xl mt-12 pt-12 border-t border-[#1a1a1a]">
-        <h2 className="text-[20px] text-white tracking-tight mb-8">
+      <div ref={formRef} className="max-w-2xl mt-12 pt-12 border-t border-border">
+        <h2 className="text-[20px] text-foreground tracking-tight mb-8">
           Configure Run
         </h2>
 
@@ -260,27 +260,27 @@ export default function NewRun() {
           {/* Selected Benchmark Info */}
           {selectedBenchmark && (
             <div>
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Selected Benchmark
               </p>
-              <div className="p-5 border border-[#1a1a1a] bg-[#0a0a0a]">
+              <div className="p-5 border border-border bg-background-secondary">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[17px] text-white font-medium">
+                  <h3 className="text-[17px] text-foreground font-medium">
                     {selectedBenchmark.name}
                   </h3>
-                  <span className="px-2.5 py-1 text-[11px] text-[#888] border border-[#222] uppercase tracking-wide">
+                  <span className="px-2.5 py-1 text-[11px] text-muted border border-border-secondary uppercase tracking-wide">
                     {selectedBenchmark.category}
                   </span>
                 </div>
-                <p className="text-[14px] text-[#888] leading-relaxed">
+                <p className="text-[14px] text-muted leading-relaxed">
                   {selectedBenchmark.description || selectedBenchmark.description_short}
                 </p>
                 {selectedBenchmark.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#1a1a1a]">
+                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border">
                     {selectedBenchmark.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="px-2 py-1 text-[11px] text-[#666] bg-[#111] border border-[#1a1a1a]"
+                        className="px-2 py-1 text-[11px] text-muted-foreground bg-background-tertiary border border-border"
                       >
                         {tag}
                       </span>
@@ -291,7 +291,7 @@ export default function NewRun() {
               <button
                 type="button"
                 onClick={() => setSelectedBenchmark(undefined)}
-                className="mt-3 text-[13px] text-[#888] hover:text-white transition-colors"
+                className="mt-3 text-[13px] text-muted hover:text-foreground transition-colors"
               >
                 ← Change benchmark
               </button>
@@ -300,18 +300,18 @@ export default function NewRun() {
 
           {/* Model Selection */}
           <div>
-            <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
               Model
             </p>
             
             {modelsLoading && (
-              <div className="text-[13px] text-[#666] mb-3">
+              <div className="text-[13px] text-muted-foreground mb-3">
                 Loading available models...
               </div>
             )}
             
             {modelsError && (
-              <div className="text-[13px] text-red-400 mb-3">
+              <div className="text-[13px] text-error mb-3">
                 Error loading models: {modelsError}. You can still enter a custom model below.
               </div>
             )}
@@ -320,7 +320,7 @@ export default function NewRun() {
               value={model}
               onChange={(e) => setModel(e.target.value)}
               disabled={modelsLoading}
-              className="w-full px-4 py-3 bg-[#0c0c0c] border border-[#222] text-white text-[15px] focus:border-white transition-colors appearance-none cursor-pointer hover:border-[#444] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-3 bg-background border border-border-secondary text-foreground text-[15px] focus:border-foreground transition-colors appearance-none cursor-pointer hover:border-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
                 backgroundRepeat: 'no-repeat',
@@ -352,16 +352,16 @@ export default function NewRun() {
                   value={customModel}
                   onChange={(e) => setCustomModel(e.target.value)}
                   placeholder="provider/model-name"
-                  className="w-full px-4 py-3 bg-transparent border border-[#222] text-white placeholder-[#444] text-[15px] focus:border-white transition-colors"
+                  className="w-full px-4 py-3 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[15px] focus:border-foreground transition-colors"
                 />
-                <p className="text-[13px] text-[#666] mt-2">
+                <p className="text-[13px] text-muted-foreground mt-2">
                   Enter the model identifier in the format: provider/model-name
                 </p>
               </div>
             )}
             
             {model && model !== 'custom' && (
-              <p className="text-[13px] text-[#666] mt-2">
+              <p className="text-[13px] text-muted-foreground mt-2">
                 Selected: {model}
               </p>
             )}
@@ -369,9 +369,9 @@ export default function NewRun() {
 
           {/* Sample Limit */}
           <div>
-            <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
               Sample Limit
-              <span className="ml-2 text-[#444] normal-case tracking-normal">(optional)</span>
+              <span className="ml-2 text-muted-foreground normal-case tracking-normal">(optional)</span>
             </p>
             <input
               type="number"
@@ -380,19 +380,19 @@ export default function NewRun() {
               placeholder="10"
               min={1}
               max={10000}
-              className="w-32 px-4 py-3 bg-transparent border border-[#222] text-white placeholder-[#444] text-[#15px] focus:border-white transition-colors"
+              className="w-32 px-4 py-3 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[15px] focus:border-foreground transition-colors"
             />
-            <p className="text-[13px] text-[#666] mt-2">
+            <p className="text-[13px] text-muted-foreground mt-2">
               Limit the number of samples to run. Leave empty for full benchmark.
             </p>
           </div>
 
           {/* Advanced Settings Toggle */}
-          <div className="border-t border-[#1a1a1a] pt-8">
+          <div className="border-t border-border pt-8">
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-3 text-[13px] text-[#888] hover:text-white transition-colors group"
+              className="flex items-center gap-3 text-[13px] text-muted hover:text-foreground transition-colors group"
             >
               <span className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`}>
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -401,7 +401,7 @@ export default function NewRun() {
               </span>
               <span className="uppercase tracking-[0.1em]">Advanced Settings</span>
               {!showAdvanced && (temperature !== undefined || topP !== undefined || maxTokens !== undefined || timeout !== undefined || epochs !== undefined || maxConnections !== undefined) && (
-                <span className="text-[11px] text-[#555] normal-case tracking-normal">
+                <span className="text-[11px] text-muted-foreground normal-case tracking-normal">
                   (configured)
                 </span>
               )}
@@ -411,7 +411,7 @@ export default function NewRun() {
               <div className="mt-6 grid grid-cols-2 gap-6">
                 {/* Temperature */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Temperature
                   </label>
                   <input
@@ -422,16 +422,16 @@ export default function NewRun() {
                     step="0.1"
                     min={0}
                     max={2}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Controls randomness (0.0 - 2.0)
                   </p>
                 </div>
 
                 {/* Top P */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Top P
                   </label>
                   <input
@@ -442,16 +442,16 @@ export default function NewRun() {
                     step="0.05"
                     min={0}
                     max={1}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Nucleus sampling (0.0 - 1.0)
                   </p>
                 </div>
 
                 {/* Max Tokens */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Max Tokens
                   </label>
                   <input
@@ -461,16 +461,16 @@ export default function NewRun() {
                     placeholder="1024"
                     min={1}
                     max={128000}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Maximum tokens per response
                   </p>
                 </div>
 
                 {/* Timeout */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Timeout (seconds)
                   </label>
                   <input
@@ -480,16 +480,16 @@ export default function NewRun() {
                     placeholder="120"
                     min={1}
                     max={3600}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Request timeout per sample
                   </p>
                 </div>
 
                 {/* Epochs */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Epochs
                   </label>
                   <input
@@ -499,16 +499,16 @@ export default function NewRun() {
                     placeholder="1"
                     min={1}
                     max={100}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Number of evaluation passes
                   </p>
                 </div>
 
                 {/* Max Connections */}
                 <div>
-                  <label className="block text-[11px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                  <label className="block text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                     Max Connections
                   </label>
                   <input
@@ -518,9 +518,9 @@ export default function NewRun() {
                     placeholder="10"
                     min={1}
                     max={100}
-                    className="w-full px-3 py-2 bg-transparent border border-[#222] text-white placeholder-[#444] text-[14px] focus:border-white transition-colors"
+                    className="w-full px-3 py-2 bg-transparent border border-border-secondary text-foreground placeholder-muted-foreground text-[14px] focus:border-foreground transition-colors"
                   />
-                  <p className="text-[12px] text-[#555] mt-1.5">
+                  <p className="text-[12px] text-muted-foreground mt-1.5">
                     Concurrent API connections
                   </p>
                 </div>
@@ -532,7 +532,7 @@ export default function NewRun() {
           <button
             type="submit"
             disabled={!selectedBenchmark || !model || (model === 'custom' && !customModel) || submitting || modelsLoading}
-            className="px-8 py-3 bg-white text-[#0c0c0c] text-[14px] tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+            className="px-8 py-3 bg-accent text-accent-foreground text-[14px] tracking-wide disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
           >
             {submitting ? 'Starting...' : modelsLoading ? 'Loading...' : 'Start Run'}
           </button>

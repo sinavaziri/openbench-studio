@@ -2,21 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark theme (default) */
+:root,
+:root.dark,
+[data-theme="dark"] {
+  --color-background: #0c0c0c;
+  --color-background-secondary: #0a0a0a;
+  --color-background-tertiary: #111111;
+  --color-foreground: #ffffff;
+  --color-foreground-secondary: #aaaaaa;
+  --color-muted: #888888;
+  --color-muted-foreground: #666666;
+  --color-border: #1a1a1a;
+  --color-border-secondary: #222222;
+  --color-accent: #ffffff;
+  --color-accent-foreground: #0c0c0c;
+  --color-success: #4a4;
+  --color-success-bg: #0a1a0a;
+  --color-success-border: #1a3a1a;
+  --color-error: #c44;
+  --color-error-bg: #1a0a0a;
+  --color-error-border: #3a1a1a;
+  --color-warning: #c9a227;
+  --color-warning-bg: #1a1500;
+  --color-warning-border: #3a3000;
+  
+  /* Chart colors */
+  --color-chart-bar: rgb(255, 255, 255);
+  --color-chart-bar-secondary: rgb(180, 180, 180);
+  --color-chart-track: #111111;
+  
+  /* Toast styles */
+  --toast-bg: #111;
+  --toast-border: #222;
+  --toast-success-border: #1a3a1a;
+  --toast-error-border: #3a1a1a;
+  
+  /* Scrollbar */
+  --scrollbar-thumb: #333;
+  --scrollbar-thumb-hover: #444;
+  
+  /* Selection */
+  --selection-bg: rgba(255, 255, 255, 0.2);
+  
+  /* Input placeholder */
+  --placeholder-color: #444;
+}
+
+/* Light theme */
+:root.light,
+[data-theme="light"] {
+  --color-background: #fafafa;
+  --color-background-secondary: #ffffff;
+  --color-background-tertiary: #f5f5f5;
+  --color-foreground: #111111;
+  --color-foreground-secondary: #444444;
+  --color-muted: #666666;
+  --color-muted-foreground: #888888;
+  --color-border: #e5e5e5;
+  --color-border-secondary: #d4d4d4;
+  --color-accent: #111111;
+  --color-accent-foreground: #ffffff;
+  --color-success: #22c55e;
+  --color-success-bg: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-error: #dc2626;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-warning: #ca8a04;
+  --color-warning-bg: #fefce8;
+  --color-warning-border: #fef08a;
+  
+  /* Chart colors */
+  --color-chart-bar: rgb(17, 17, 17);
+  --color-chart-bar-secondary: rgb(100, 100, 100);
+  --color-chart-track: #e5e5e5;
+  
+  /* Toast styles */
+  --toast-bg: #ffffff;
+  --toast-border: #e5e5e5;
+  --toast-success-border: #bbf7d0;
+  --toast-error-border: #fecaca;
+  
+  /* Scrollbar */
+  --scrollbar-thumb: #d4d4d4;
+  --scrollbar-thumb-hover: #a3a3a3;
+  
+  /* Selection */
+  --selection-bg: rgba(0, 0, 0, 0.15);
+  
+  /* Input placeholder */
+  --placeholder-color: #a3a3a3;
+}
+
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background-color: #0c0c0c;
-  color: #ffffff;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-weight: 400;
   line-height: 1.6;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 ::selection {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--selection-bg);
 }
 
 /* Custom scrollbar */
@@ -30,17 +124,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #444;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Focus styles */
 *:focus-visible {
-  outline: 1px solid #fff;
+  outline: 1px solid var(--color-foreground);
   outline-offset: 2px;
 }
 
@@ -55,9 +149,20 @@ a:hover {
 
 /* Input styles */
 input::placeholder {
-  color: #666;
+  color: var(--placeholder-color);
 }
 
 input:focus {
   outline: none;
+}
+
+/* Smooth theme transitions */
+.dark *,
+.light * {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* Prevent transition on initial load */
+.no-transitions * {
+  transition: none !important;
 }

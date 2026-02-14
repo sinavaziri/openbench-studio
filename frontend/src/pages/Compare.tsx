@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import toast from 'react-hot-toast';
 import { api, RunDetail } from '../api/client';
+import { useTheme } from '../context/ThemeContext';
 import Layout from '../components/Layout';
-import { ErrorState } from '../components/ErrorBoundary';
-import ExportDropdown from '../components/ExportDropdown';
-import { exportComparisonToCSV, exportComparisonToJSON, ComparisonData } from '../utils/export';
 
 function formatValue(value: number, unit?: string | null): string {
   if (unit === null || unit === undefined) {
@@ -60,51 +57,33 @@ interface CompareBreakdown {
 
 export default function Compare() {
   const [searchParams] = useSearchParams();
+  const { resolvedTheme } = useTheme();
   const [runs, setRuns] = useState<RunDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ title: string; message: string; recoverable: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const runIds = searchParams.get('ids')?.split(',').filter(Boolean) || [];
 
-  const loadRuns = async () => {
+  useEffect(() => {
     if (runIds.length === 0) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    
-    const results: RunDetail[] = [];
-    const failed: string[] = [];
-    
-    // Load runs individually to handle partial failures
-    for (const id of runIds) {
+    const loadRuns = async () => {
       try {
-        const run = await api.getRun(id);
-        results.push(run);
+        const loadedRuns = await Promise.all(
+          runIds.map((id) => api.getRun(id))
+        );
+        setRuns(loadedRuns);
+        setError(null);
       } catch (err) {
-        failed.push(id);
-        console.error(`Failed to load run ${id}:`, err);
+        setError(err instanceof Error ? err.message : 'Failed to load runs');
+      } finally {
+        setLoading(false);
       }
-    }
-    
-    setRuns(results);
-    
-    if (results.length === 0 && failed.length > 0) {
-      setError({
-        title: 'Could Not Load Runs',
-        message: `Unable to load any of the ${failed.length} selected runs. They may have been deleted.`,
-        recoverable: true,
-      });
-    } else if (failed.length > 0) {
-      toast.error(`${failed.length} run${failed.length > 1 ? 's' : ''} could not be loaded`, { duration: 5000 });
-    }
-    
-    setLoading(false);
-  };
+    };
 
-  useEffect(() => {
     loadRuns();
   }, [searchParams]);
 
@@ -197,29 +176,15 @@ export default function Compare() {
   const primaryMetricData = getPrimaryMetricData();
   const breakdowns = aggregateBreakdowns();
 
-  // Export handlers
-  const getComparisonData = (): ComparisonData => ({
-    runs,
-    metrics,
-    breakdowns,
-  });
-
-  const handleExportCSV = () => {
-    exportComparisonToCSV(getComparisonData());
-    toast.success('Exported comparison to CSV');
-  };
-
-  const handleExportJSON = () => {
-    exportComparisonToJSON(getComparisonData());
-    toast.success('Exported comparison to JSON');
-  };
+  // Chart bar track color based on theme
+  const barTrackColor = resolvedTheme === 'dark' ? '#111' : '#e5e5e5';
 
   if (loading) {
     return (
       <Layout>
         <div className="space-y-8">
-          <div className="h-8 w-64 bg-[#1a1a1a] rounded animate-pulse" />
-          <div className="h-64 bg-[#1a1a1a] rounded animate-pulse" />
+          <div className="h-8 w-64 bg-border rounded animate-pulse" />
+          <div className="h-64 bg-border rounded animate-pulse" />
         </div>
       </Layout>
     );
@@ -229,12 +194,12 @@ export default function Compare() {
     return (
       <Layout>
         <div className="text-center py-16">
-          <p className="text-[15px] text-[#888] mb-4">
+          <p className="text-[15px] text-muted mb-4">
             No runs selected for comparison
           </p>
           <Link
             to="/history"
-            className="text-[14px] text-white hover:opacity-70 transition-opacity"
+            className="text-[14px] text-foreground hover:opacity-70 transition-opacity"
           >
             ← Back to History
           </Link>
@@ -246,18 +211,15 @@ export default function Compare() {
   if (error) {
     return (
       <Layout>
-        <ErrorState 
-          title={error.title}
-          message={error.message}
-          onRetry={error.recoverable ? loadRuns : undefined}
-        >
-          <Link 
-            to="/history" 
-            className="mt-4 inline-block text-[14px] text-white hover:opacity-70 transition-opacity"
+        <div className="text-center py-16">
+          <p className="text-[15px] text-muted mb-4">{error}</p>
+          <Link
+            to="/history"
+            className="text-[14px] text-foreground hover:opacity-70 transition-opacity"
           >
             ← Back to History
           </Link>
-        </ErrorState>
+        </div>
       </Layout>
     );
   }
@@ -272,35 +234,22 @@ export default function Compare() {
       <div className="mb-12">
         <Link
           to="/history"
-          className="text-[13px] text-[#666] hover:text-white transition-colors mb-4 inline-block"
+          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-4 inline-block"
         >
           ← Back
         </Link>
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-[28px] text-white tracking-tight mb-2">
-              Compare Runs
-            </h1>
-            <p className="text-[15px] text-[#666]">
-              Comparing {runs.length} runs
-            </p>
-          </div>
-          {runs.length > 0 && (
-            <ExportDropdown
-              label="Export Comparison"
-              options={[
-                { label: 'Comparison', format: 'csv', onClick: handleExportCSV },
-                { label: 'Comparison', format: 'json', onClick: handleExportJSON },
-              ]}
-            />
-          )}
-        </div>
+        <h1 className="text-[28px] text-foreground tracking-tight mb-2">
+          Compare Runs
+        </h1>
+        <p className="text-[15px] text-muted-foreground">
+          Comparing {runs.length} runs
+        </p>
       </div>
 
       {/* Warning for different benchmarks */}
       {hasDifferentBenchmarks && (
-        <div className="mb-8 px-5 py-4 bg-[#1a1500] border border-[#3a3000]">
-          <p className="text-[14px] text-[#c9a227]">
+        <div className="mb-8 px-5 py-4 bg-warning-bg border border-warning-border">
+          <p className="text-[14px] text-warning">
             ⚠ These runs use different benchmarks ({benchmarks.join(', ')}). 
             Comparison may not be meaningful.
           </p>
@@ -309,7 +258,7 @@ export default function Compare() {
 
       {/* Run Legend */}
       <div className="mb-8">
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
           Runs
         </p>
         <div className="flex flex-wrap gap-4">
@@ -317,15 +266,15 @@ export default function Compare() {
             <Link
               key={run.run_id}
               to={`/runs/${run.run_id}`}
-              className="flex items-center gap-3 px-4 py-3 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#333] transition-colors"
+              className="flex items-center gap-3 px-4 py-3 bg-background-secondary border border-border hover:border-border-secondary transition-colors"
             >
               <div
                 className="w-3 h-3 rounded-sm"
                 style={{ backgroundColor: getRunColor(index) }}
               />
               <div>
-                <p className="text-[14px] text-white">{run.benchmark}</p>
-                <p className="text-[12px] text-[#666]">{truncateModel(run.model)}</p>
+                <p className="text-[14px] text-foreground">{run.benchmark}</p>
+                <p className="text-[12px] text-muted-foreground">{truncateModel(run.model)}</p>
               </div>
             </Link>
           ))}
@@ -335,7 +284,7 @@ export default function Compare() {
       {/* Primary Metric Bar Chart */}
       {primaryMetricData && (
         <div className="mb-12">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
             {formatMetricName(primaryMetricData.name)}
           </p>
           <div className="space-y-3">
@@ -347,11 +296,14 @@ export default function Compare() {
                 <div key={run.run_id} className="group">
                   <div className="flex items-center gap-4">
                     <div className="w-48 truncate">
-                      <span className="text-[13px] text-[#888]">
+                      <span className="text-[13px] text-muted">
                         {truncateModel(run.model)}
                       </span>
                     </div>
-                    <div className="flex-1 h-8 bg-[#111] rounded-sm overflow-hidden relative">
+                    <div 
+                      className="flex-1 h-8 rounded-sm overflow-hidden relative"
+                      style={{ backgroundColor: barTrackColor }}
+                    >
                       <div
                         className="h-full transition-all duration-500 ease-out"
                         style={{
@@ -359,7 +311,7 @@ export default function Compare() {
                           backgroundColor: getRunColor(index),
                         }}
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-white font-light tabular-nums">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-foreground font-light tabular-nums">
                         {formatValue(value)}
                       </span>
                     </div>
@@ -374,20 +326,20 @@ export default function Compare() {
       {/* Metrics Comparison Table */}
       {metrics.length > 0 && (
         <div className="mb-12">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
             All Metrics
           </p>
-          <div className="bg-[#0a0a0a] border border-[#1a1a1a] overflow-x-auto">
+          <div className="bg-background-secondary border border-border overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#1a1a1a]">
-                  <th className="text-left px-5 py-4 text-[12px] text-[#555] uppercase tracking-[0.1em] font-normal">
+                <tr className="border-b border-border">
+                  <th className="text-left px-5 py-4 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal">
                     Metric
                   </th>
                   {runs.map((run, index) => (
                     <th
                       key={run.run_id}
-                      className="text-right px-5 py-4 text-[12px] text-[#555] uppercase tracking-[0.1em] font-normal"
+                      className="text-right px-5 py-4 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal"
                     >
                       <div className="flex items-center justify-end gap-2">
                         <div
@@ -409,8 +361,8 @@ export default function Compare() {
                   const minVal = Math.min(...values, 0);
 
                   return (
-                    <tr key={metric.name} className="border-b border-[#111]">
-                      <td className="px-5 py-4 text-[14px] text-[#888]">
+                    <tr key={metric.name} className="border-b border-background-tertiary">
+                      <td className="px-5 py-4 text-[14px] text-muted">
                         {formatMetricName(metric.name)}
                       </td>
                       {metric.values.map((value, index) => {
@@ -422,12 +374,12 @@ export default function Compare() {
                             key={index}
                             className={`px-5 py-4 text-right text-[15px] tabular-nums ${
                               value === null
-                                ? 'text-[#444]'
+                                ? 'text-muted-foreground'
                                 : isBest
-                                ? 'text-white font-medium'
+                                ? 'text-foreground font-medium'
                                 : isWorst
-                                ? 'text-[#666]'
-                                : 'text-[#aaa]'
+                                ? 'text-muted-foreground'
+                                : 'text-foreground-secondary'
                             }`}
                           >
                             {value !== null ? formatValue(value) : '—'}
@@ -446,30 +398,30 @@ export default function Compare() {
       {/* Breakdown Comparison */}
       {breakdowns.length > 0 && (
         <div className="mb-12">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
             Breakdowns
           </p>
           <div className="space-y-8">
             {breakdowns.map((breakdown) => (
               <div
                 key={breakdown.name}
-                className="bg-[#0a0a0a] border border-[#1a1a1a] overflow-x-auto"
+                className="bg-background-secondary border border-border overflow-x-auto"
               >
-                <div className="px-5 py-3 border-b border-[#1a1a1a]">
-                  <p className="text-[13px] text-[#666] uppercase tracking-[0.1em]">
+                <div className="px-5 py-3 border-b border-border">
+                  <p className="text-[13px] text-muted-foreground uppercase tracking-[0.1em]">
                     {formatMetricName(breakdown.name)}
                   </p>
                 </div>
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#1a1a1a]">
-                      <th className="text-left px-5 py-3 text-[12px] text-[#555] uppercase tracking-[0.1em] font-normal">
+                    <tr className="border-b border-border">
+                      <th className="text-left px-5 py-3 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal">
                         Category
                       </th>
                       {runs.map((run, index) => (
                         <th
                           key={run.run_id}
-                          className="text-right px-5 py-3 text-[12px] text-[#555] font-normal"
+                          className="text-right px-5 py-3 text-[12px] text-muted-foreground font-normal"
                         >
                           <div className="flex items-center justify-end gap-2">
                             <div
@@ -487,8 +439,8 @@ export default function Compare() {
                       const maxVal = Math.max(...values, 0);
 
                       return (
-                        <tr key={item.key} className="border-b border-[#111]">
-                          <td className="px-5 py-3 text-[13px] text-[#888]">
+                        <tr key={item.key} className="border-b border-background-tertiary">
+                          <td className="px-5 py-3 text-[13px] text-muted">
                             {formatMetricName(item.key)}
                           </td>
                           {item.values.map((value, index) => {
@@ -499,10 +451,10 @@ export default function Compare() {
                                 key={index}
                                 className={`px-5 py-3 text-right text-[14px] tabular-nums ${
                                   value === null
-                                    ? 'text-[#444]'
+                                    ? 'text-muted-foreground'
                                     : isBest
-                                    ? 'text-white'
-                                    : 'text-[#888]'
+                                    ? 'text-foreground'
+                                    : 'text-muted'
                                 }`}
                               >
                                 {value !== null ? formatValue(value) : '—'}
@@ -522,11 +474,11 @@ export default function Compare() {
 
       {/* No data state */}
       {metrics.length === 0 && breakdowns.length === 0 && (
-        <div className="text-center py-12 bg-[#0a0a0a] border border-[#1a1a1a]">
-          <p className="text-[15px] text-[#555]">
+        <div className="text-center py-12 bg-background-secondary border border-border">
+          <p className="text-[15px] text-muted-foreground">
             No metrics available for comparison
           </p>
-          <p className="text-[13px] text-[#444] mt-2">
+          <p className="text-[13px] text-muted-foreground mt-2">
             Selected runs may not have completed or produced structured results
           </p>
         </div>
@@ -534,20 +486,20 @@ export default function Compare() {
 
       {/* Configuration Comparison */}
       <div className="mb-12">
-        <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
           Configuration
         </p>
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] overflow-x-auto">
+        <div className="bg-background-secondary border border-border overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#1a1a1a]">
-                <th className="text-left px-5 py-4 text-[12px] text-[#555] uppercase tracking-[0.1em] font-normal">
+              <tr className="border-b border-border">
+                <th className="text-left px-5 py-4 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal">
                   Setting
                 </th>
                 {runs.map((run, index) => (
                   <th
                     key={run.run_id}
-                    className="text-right px-5 py-4 text-[12px] text-[#555] uppercase tracking-[0.1em] font-normal"
+                    className="text-right px-5 py-4 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal"
                   >
                     <div className="flex items-center justify-end gap-2">
                       <div
@@ -564,8 +516,8 @@ export default function Compare() {
             </thead>
             <tbody>
               {['benchmark', 'model', 'limit', 'temperature', 'epochs'].map((key) => (
-                <tr key={key} className="border-b border-[#111]">
-                  <td className="px-5 py-4 text-[14px] text-[#888]">
+                <tr key={key} className="border-b border-background-tertiary">
+                  <td className="px-5 py-4 text-[14px] text-muted">
                     {formatMetricName(key)}
                   </td>
                   {runs.map((run, index) => {
@@ -575,7 +527,7 @@ export default function Compare() {
                     return (
                       <td
                         key={index}
-                        className="px-5 py-4 text-right text-[14px] text-[#aaa]"
+                        className="px-5 py-4 text-right text-[14px] text-foreground-secondary"
                       >
                         {value !== undefined && value !== null ? String(value) : '—'}
                       </td>
@@ -590,6 +542,3 @@ export default function Compare() {
     </Layout>
   );
 }
-
-
-

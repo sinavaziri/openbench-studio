@@ -11,7 +11,7 @@ interface BenchmarkCardProps {
 const getSourceBadge = (source?: string) => {
   if (source === 'plugin') {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-[#1a1a1a] text-[#888] border border-[#333]">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] bg-background-tertiary text-muted border border-border-secondary">
         <Package size={10} />
         Plugin
       </span>
@@ -29,28 +29,28 @@ export default function BenchmarkCard({ benchmark, onClick, isSelected }: Benchm
       onClick={onClick}
       className={`
         p-6 space-y-4 cursor-pointer transition-colors
-        bg-[#0a0a0a] 
+        bg-background-secondary 
         ${isSelected 
-          ? 'border border-white bg-[#111]' 
-          : 'border border-[#1a1a1a] hover:border-[#333]'
+          ? 'border border-foreground bg-background-tertiary' 
+          : 'border border-border hover:border-border-secondary'
         }
       `}
     >
       {/* Icon */}
       <div>
-        <Icon size={20} className="text-[#666]" />
+        <Icon size={20} className="text-muted-foreground" />
       </div>
 
       {/* Name and Source Badge */}
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-[14px] text-white font-medium">
+        <h3 className="text-[14px] text-foreground font-medium">
           {benchmark.name}
         </h3>
         {sourceBadge}
       </div>
 
       {/* Metadata */}
-      <div className="text-[11px] text-[#666]">
+      <div className="text-[11px] text-muted-foreground">
         {benchmark.category && (
           <>
             {benchmark.category}
@@ -61,7 +61,7 @@ export default function BenchmarkCard({ benchmark, onClick, isSelected }: Benchm
       </div>
 
       {/* Description */}
-      <p className="text-[13px] text-[#888] line-clamp-3">
+      <p className="text-[13px] text-muted line-clamp-3">
         {benchmark.description || 'No description available'}
       </p>
 
@@ -72,8 +72,8 @@ export default function BenchmarkCard({ benchmark, onClick, isSelected }: Benchm
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
         className="
-          inline-flex items-center gap-1.5 text-[11px] text-[#666] 
-          hover:text-white transition-colors
+          inline-flex items-center gap-1.5 text-[11px] text-muted-foreground 
+          hover:text-foreground transition-colors
         "
       >
         <ExternalLink size={12} />
@@ -82,4 +82,3 @@ export default function BenchmarkCard({ benchmark, onClick, isSelected }: Benchm
     </div>
   );
 }
-
