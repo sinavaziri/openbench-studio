@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Benchmark } from '../api/client';
+import { Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
+import { Benchmark, ModelCapabilities } from '../api/client';
 import BenchmarkCard from './BenchmarkCard';
 
 interface BenchmarkCatalogProps {
   benchmarks: Benchmark[];
   onBenchmarkSelect: (benchmark: Benchmark) => void;
   selectedBenchmark?: Benchmark;
+  /** Available model capabilities - when provided, enables "compatible only" filtering */
+  availableCapabilities?: ModelCapabilities;
 }
 
 const ITEMS_PER_PAGE = 9;
@@ -14,17 +16,37 @@ const ITEMS_PER_PAGE = 9;
 export default function BenchmarkCatalog({ 
   benchmarks, 
   onBenchmarkSelect,
-  selectedBenchmark 
+  selectedBenchmark,
+  availableCapabilities
 }: BenchmarkCatalogProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [capabilityFilter, setCapabilityFilter] = useState<'all' | 'compatible'>('all');
 
   // Extract unique categories
   const categories = useMemo(() => {
     const cats = new Set(benchmarks.map(b => b.category).filter(Boolean));
     return ['all', ...Array.from(cats).sort()];
   }, [benchmarks]);
+
+  /**
+   * Check if a benchmark is compatible with available capabilities.
+   */
+  const isBenchmarkCompatible = (benchmark: Benchmark): boolean => {
+    if (!availableCapabilities || !benchmark.requirements) return true;
+    
+    const reqs = benchmark.requirements;
+    
+    // Check each requirement against available capabilities
+    if (reqs.vision && !availableCapabilities.vision) return false;
+    if (reqs.function_calling && !availableCapabilities.function_calling) return false;
+    if (reqs.code_execution && !availableCapabilities.code_execution) return false;
+    // Note: min_context_length would require aggregated max context from all models
+    // For now, we skip this check as it needs model-level data
+    
+    return true;
+  };
 
   // Filter benchmarks
   const filteredBenchmarks = useMemo(() => {
@@ -44,13 +66,18 @@ export default function BenchmarkCatalog({
       );
     }
 
+    // Apply capability compatibility filter
+    if (capabilityFilter === 'compatible' && availableCapabilities) {
+      filtered = filtered.filter(isBenchmarkCompatible);
+    }
+
     return filtered;
-  }, [benchmarks, selectedCategory, searchQuery]);
+  }, [benchmarks, selectedCategory, searchQuery, capabilityFilter, availableCapabilities]);
 
   // Reset to page 1 when filters change
   useMemo(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, capabilityFilter]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredBenchmarks.length / ITEMS_PER_PAGE);
@@ -88,6 +115,31 @@ export default function BenchmarkCatalog({
           </p>
         </div>
       </div>
+
+      {/* Capability Filter Toggle */}
+      {availableCapabilities && (
+        <div className="mb-4">
+          <button
+            onClick={() => setCapabilityFilter(prev => prev === 'all' ? 'compatible' : 'all')}
+            className={`
+              inline-flex items-center gap-2 px-3 py-2 text-[12px] 
+              border rounded transition-colors
+              ${capabilityFilter === 'compatible'
+                ? 'bg-foreground text-background border-foreground'
+                : 'bg-background-secondary text-muted-foreground border-border hover:border-border-secondary hover:text-foreground'
+              }
+            `}
+          >
+            <Filter size={14} />
+            {capabilityFilter === 'compatible' ? 'Showing compatible only' : 'Show compatible only'}
+          </button>
+          {capabilityFilter === 'compatible' && (
+            <span className="ml-3 text-[11px] text-muted-foreground">
+              Filtered by your model capabilities
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Search and Filter Controls */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">

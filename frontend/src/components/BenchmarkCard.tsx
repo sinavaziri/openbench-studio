@@ -1,4 +1,4 @@
-import { Benchmark } from '../api/client';
+import { Benchmark, BenchmarkRequirements } from '../api/client';
 import { getCategoryIcon } from '../utils/categoryIcons';
 import { ExternalLink, Package } from 'lucide-react';
 
@@ -18,6 +18,59 @@ const getSourceBadge = (source?: string) => {
     );
   }
   return null;
+};
+
+/**
+ * Render requirement indicator badges for a benchmark.
+ * Shows capability requirements: vision, function calling, code execution, context length.
+ */
+const RequirementBadges = ({ requirements }: { requirements?: BenchmarkRequirements }) => {
+  if (!requirements) return null;
+  
+  const hasAnyRequirement = 
+    requirements.vision || 
+    requirements.function_calling || 
+    requirements.code_execution || 
+    requirements.min_context_length;
+  
+  if (!hasAnyRequirement) return null;
+  
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {requirements.vision && (
+        <span 
+          className="inline-flex items-center justify-center w-6 h-6 text-sm bg-blue-500/10 dark:bg-blue-400/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 dark:border-blue-400/20 rounded"
+          title="Requires vision-capable model"
+        >
+          📷
+        </span>
+      )}
+      {requirements.function_calling && (
+        <span 
+          className="inline-flex items-center justify-center w-6 h-6 text-sm bg-purple-500/10 dark:bg-purple-400/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 dark:border-purple-400/20 rounded"
+          title="Requires function calling support"
+        >
+          🔧
+        </span>
+      )}
+      {requirements.code_execution && (
+        <span 
+          className="inline-flex items-center justify-center w-6 h-6 text-sm bg-green-500/10 dark:bg-green-400/10 text-green-600 dark:text-green-400 border border-green-500/20 dark:border-green-400/20 rounded"
+          title="Requires code execution capability"
+        >
+          💻
+        </span>
+      )}
+      {requirements.min_context_length && (
+        <span 
+          className="inline-flex items-center justify-center h-6 px-1.5 text-[10px] font-medium bg-amber-500/10 dark:bg-amber-400/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 dark:border-amber-400/20 rounded"
+          title={`Requires ${requirements.min_context_length.toLocaleString()}+ context length`}
+        >
+          {Math.round(requirements.min_context_length / 1000)}K+
+        </span>
+      )}
+    </div>
+  );
 };
 
 export default function BenchmarkCard({ benchmark, onClick, isSelected }: BenchmarkCardProps) {
@@ -59,6 +112,9 @@ export default function BenchmarkCard({ benchmark, onClick, isSelected }: Benchm
         )}
         {benchmark.tags?.slice(0, 2).join(' · ')}
       </div>
+
+      {/* Requirement Badges */}
+      <RequirementBadges requirements={benchmark.requirements} />
 
       {/* Description */}
       <p className="text-[13px] text-muted line-clamp-3">
