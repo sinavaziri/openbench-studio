@@ -22,10 +22,10 @@ router = APIRouter()
     "/benchmarks",
     response_model=List[Benchmark],
     summary="List benchmarks",
-    description="List all available benchmarks that can be run.",
+    description="List all available benchmarks that can be run, including capability requirements.",
     responses={
         200: {
-            "description": "List of available benchmarks",
+            "description": "List of available benchmarks with requirements",
             "content": {
                 "application/json": {
                     "example": [{
@@ -35,7 +35,15 @@ router = APIRouter()
                         "description": "MMLU tests models on 57 subjects...",
                         "tags": ["knowledge", "multiple-choice"],
                         "featured": True,
-                        "source": "builtin"
+                        "source": "builtin",
+                        "requirements": {
+                            "vision": False,
+                            "code_execution": False,
+                            "function_calling": False,
+                            "min_context_length": None
+                        },
+                        "estimated_tokens": 2000,
+                        "sample_count": 14042
                     }]
                 }
             }
@@ -44,7 +52,7 @@ router = APIRouter()
 )
 async def list_benchmarks():
     """
-    List all available benchmarks.
+    List all available benchmarks with capability requirements.
     
     Dynamically discovers benchmarks via `bench list` if available,
     otherwise returns a curated static list of popular benchmarks.
@@ -55,6 +63,12 @@ async def list_benchmarks():
     - **Coding**: Code generation and understanding (HumanEval, MBPP, etc.)
     - **Reasoning**: Logical reasoning and inference
     - **Safety**: Safety and alignment evaluations
+    
+    **Each benchmark includes requirements for:**
+    - **vision**: Whether the benchmark requires image processing
+    - **code_execution**: Whether the benchmark requires code execution
+    - **function_calling**: Whether the benchmark requires function/tool calling
+    - **min_context_length**: Minimum context window required
     
     This endpoint does not require authentication.
     
@@ -100,6 +114,9 @@ async def get_benchmark_detail(name: str):
     - Category and tags
     - Whether it's a featured benchmark
     - Source (builtin, plugin, etc.)
+    - Model capability requirements (vision, function_calling, etc.)
+    - Estimated tokens per sample
+    - Total sample count
     
     **Parameters:**
     - **name**: The benchmark identifier (e.g., "mmlu", "gsm8k", "humaneval")
