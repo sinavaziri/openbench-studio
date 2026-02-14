@@ -152,10 +152,27 @@ export interface ImportResponse {
 // Model Discovery Types
 // =============================================================================
 
+export interface ModelCapabilities {
+  vision: boolean;
+  code_execution: boolean;
+  function_calling: boolean;
+  json_mode: boolean;
+  streaming: boolean;
+}
+
+export interface ModelPricing {
+  input_per_1m?: number;
+  output_per_1m?: number;
+  currency: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
   description?: string;
+  context_length?: number;
+  capabilities?: ModelCapabilities;
+  pricing?: ModelPricing;
 }
 
 export interface ModelProvider {
@@ -172,6 +189,13 @@ export interface AvailableModelsResponse {
 // Benchmark Types
 // =============================================================================
 
+export interface BenchmarkRequirements {
+  vision: boolean;
+  code_execution: boolean;
+  function_calling: boolean;
+  min_context_length?: number;
+}
+
 export interface Benchmark {
   name: string;
   category: string;
@@ -180,6 +204,9 @@ export interface Benchmark {
   tags: string[];
   featured?: boolean;  // Whether this is a featured/popular benchmark
   source?: string;  // Source of benchmark: "builtin", "plugin", "github", "cli"
+  requirements?: BenchmarkRequirements;  // Model capability requirements
+  estimated_tokens?: number;  // Average tokens per sample
+  sample_count?: number;  // Total samples in benchmark
 }
 
 export interface RunConfig {
@@ -714,9 +741,23 @@ class ApiClient {
     return this.request<ProviderInfo[]>('/api-keys/providers');
   }
 
-  async getAvailableModels(forceRefresh: boolean = false): Promise<AvailableModelsResponse> {
-    const params = forceRefresh ? '?force_refresh=true' : '';
-    return this.request<AvailableModelsResponse>(`/available-models${params}`, {}, true);
+  async getAvailableModels(
+    forceRefresh: boolean = false,
+    includeCapabilities: boolean = false
+  ): Promise<AvailableModelsResponse> {
+    const params = new URLSearchParams();
+    if (forceRefresh) params.set('force_refresh', 'true');
+    if (includeCapabilities) params.set('include_capabilities', 'true');
+    const query = params.toString();
+    return this.request<AvailableModelsResponse>(`/available-models${query ? `?${query}` : ''}`, {}, true);
+  }
+
+  async getCompatibleModels(benchmark: string): Promise<{
+    providers: ModelProvider[];
+    incompatible: { model_id: string; reason: string }[];
+    requirements: BenchmarkRequirements;
+  }> {
+    return this.request(`/compatible-models?benchmark=${encodeURIComponent(benchmark)}`, {}, true);
   }
 
   // ===========================================================================
