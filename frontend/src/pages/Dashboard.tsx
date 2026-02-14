@@ -12,6 +12,25 @@ import { exportSelectedRunsToCSV, exportSelectedRunsToJSON } from '../utils/expo
 import { useDashboardWebSocket, DashboardRunEvent } from '../hooks/useWebSocket';
 import ConnectionStatus from '../components/ConnectionStatus';
 
+// Debounce hook for search input - reduces API calls
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  
+  return debouncedValue;
+}
+
+const RUNS_PER_PAGE = 50;
+
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
   { value: 'queued', label: 'Queued' },
@@ -76,13 +95,18 @@ export default function Dashboard() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalRuns, setTotalRuns] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
   // Load saved filters from localStorage
   const savedFilters = useMemo(() => loadSavedFilters(), []);
   
-  // Filter state
+  // Filter state with debounced search (300ms delay)
   const [searchQuery, setSearchQuery] = useState(savedFilters.searchQuery);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState(savedFilters.statusFilter);
   const [tagFilter, setTagFilter] = useState(savedFilters.tagFilter);
   const [benchmarkFilter, setBenchmarkFilter] = useState(savedFilters.benchmarkFilter);

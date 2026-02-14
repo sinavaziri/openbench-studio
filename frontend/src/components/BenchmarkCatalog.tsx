@@ -73,14 +73,14 @@ export default function BenchmarkCatalog({
   };
 
   return (
-    <div className="mb-12">
+    <div className="mb-8 sm:mb-12">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6">
         <div>
           <h2 className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-1">
             Browse Benchmarks
           </h2>
-          <p className="text-[13px] text-muted">
+          <p className="text-[12px] sm:text-[13px] text-muted">
             {filteredBenchmarks.length === benchmarks.length
               ? `${benchmarks.length} benchmarks`
               : `Showing ${filteredBenchmarks.length} result${filteredBenchmarks.length !== 1 ? 's' : ''}`
@@ -90,7 +90,7 @@ export default function BenchmarkCatalog({
       </div>
 
       {/* Search and Filter Controls */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
         {/* Search Bar */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -100,9 +100,9 @@ export default function BenchmarkCatalog({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="
-              w-full h-10 pl-10 pr-4 
+              w-full h-12 sm:h-10 pl-10 pr-4 
               bg-background-secondary border border-border 
-              text-[13px] text-foreground placeholder-muted-foreground
+              text-[14px] sm:text-[13px] text-foreground placeholder-muted-foreground
               focus:border-border-secondary focus:outline-none
               transition-colors
             "
@@ -115,9 +115,9 @@ export default function BenchmarkCatalog({
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="
-              w-full h-10 px-4 
+              w-full h-12 sm:h-10 px-4 
               bg-background-secondary border border-border 
-              text-[13px] text-foreground
+              text-[14px] sm:text-[13px] text-foreground
               focus:border-border-secondary focus:outline-none
               transition-colors
               appearance-none
@@ -144,7 +144,7 @@ export default function BenchmarkCatalog({
       {/* Grid */}
       {paginatedBenchmarks.length > 0 ? (
         <>
-          <div className="grid grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
             {paginatedBenchmarks.map((benchmark) => (
               <BenchmarkCard
                 key={benchmark.name}
@@ -157,13 +157,13 @@ export default function BenchmarkCatalog({
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-6 border-t border-border">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border">
               {/* Previous Button */}
               <button
                 onClick={handlePreviousPage}
                 disabled={currentPage === 1}
                 className={`
-                  flex items-center gap-2 text-[13px] transition-colors
+                  flex items-center justify-center gap-2 text-[13px] transition-colors min-h-[44px] min-w-[100px]
                   ${currentPage === 1 
                     ? 'text-muted-foreground cursor-not-allowed' 
                     : 'text-foreground hover:text-foreground-secondary cursor-pointer'
@@ -175,10 +175,12 @@ export default function BenchmarkCatalog({
               </button>
 
               {/* Page Indicator */}
-              <div className="text-[13px] text-muted">
-                Page {currentPage} of {totalPages}
-                <span className="text-muted-foreground mx-2">·</span>
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredBenchmarks.length)} of {filteredBenchmarks.length}
+              <div className="text-[12px] sm:text-[13px] text-muted text-center order-first sm:order-none">
+                <span className="block sm:inline">Page {currentPage} of {totalPages}</span>
+                <span className="text-muted-foreground mx-2 hidden sm:inline">·</span>
+                <span className="block sm:inline text-muted-foreground">
+                  {startIndex + 1}-{Math.min(endIndex, filteredBenchmarks.length)} of {filteredBenchmarks.length}
+                </span>
               </div>
 
               {/* Next Button */}
@@ -186,7 +188,7 @@ export default function BenchmarkCatalog({
                 onClick={handleNextPage}
                 disabled={currentPage === totalPages}
                 className={`
-                  flex items-center gap-2 text-[13px] transition-colors
+                  flex items-center justify-center gap-2 text-[13px] transition-colors min-h-[44px] min-w-[100px]
                   ${currentPage === totalPages
                     ? 'text-muted-foreground cursor-not-allowed'
                     : 'text-foreground hover:text-foreground-secondary cursor-pointer'
@@ -200,7 +202,7 @@ export default function BenchmarkCatalog({
           )}
         </>
       ) : (
-        <div className="text-center py-16">
+        <div className="text-center py-12 sm:py-16">
           <p className="text-[14px] text-muted-foreground">
             No benchmarks found
           </p>
@@ -210,7 +212,7 @@ export default function BenchmarkCatalog({
                 setSearchQuery('');
                 setSelectedCategory('all');
               }}
-              className="mt-4 text-[13px] text-foreground hover:text-foreground-secondary transition-colors"
+              className="mt-4 text-[13px] text-foreground hover:text-foreground-secondary transition-colors min-h-[44px] inline-flex items-center"
             >
               Clear filters
             </button>

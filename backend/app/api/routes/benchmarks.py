@@ -10,6 +10,7 @@ Benchmarks can come from multiple sources:
 from typing import List
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.db.models import Benchmark
 from app.services.benchmark_catalog import get_benchmark, get_benchmarks
@@ -56,8 +57,18 @@ async def list_benchmarks():
     - **Safety**: Safety and alignment evaluations
     
     This endpoint does not require authentication.
+    
+    Response is cached for 5 minutes as benchmark list rarely changes.
     """
-    return await get_benchmarks()
+    benchmarks = await get_benchmarks()
+    # Return with cache headers - benchmark list is static/rarely changes
+    return JSONResponse(
+        content=[b.model_dump() for b in benchmarks],
+        headers={
+            "Cache-Control": "public, max-age=300",  # Cache for 5 minutes
+            "Vary": "Accept-Encoding",
+        }
+    )
 
 
 @router.get(

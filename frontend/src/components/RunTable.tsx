@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo } from 'react';
 import { Link } from 'react-router-dom';
 import type { RunSummary } from '../api/client';
 
@@ -58,168 +58,6 @@ interface RunTableProps {
   onSelectAll?: () => void;
   searchQuery?: string;
 }
-
-interface RunRowProps {
-  run: RunSummary;
-  index: number;
-  selectable: boolean;
-  isSelected: boolean;
-  isFocused: boolean;
-  gridCols: string;
-  onRowClick: (runId: string, e: React.MouseEvent) => void;
-  onCheckboxClick: (runId: string, e: React.MouseEvent) => void;
-  onFocusChange?: (index: number) => void;
-}
-
-// Memoized row component for performance
-const RunRow = memo(function RunRow({
-  run,
-  index,
-  selectable,
-  isSelected,
-  isFocused,
-  gridCols,
-  onRowClick,
-  onCheckboxClick,
-  onFocusChange,
-}: RunRowProps) {
-  const isCompleted = run.status === 'completed';
-  const tags = run.tags || [];
-  const displayTags = tags.slice(0, 2);
-  const moreTags = tags.length > 2 ? tags.length - 2 : 0;
-
-  if (selectable) {
-    return (
-      <div
-        onClick={(e) => onRowClick(run.run_id, e)}
-        onMouseEnter={() => onFocusChange?.(index)}
-        className={`grid ${gridCols} gap-6 py-4 border-b border-border transition-colors cursor-pointer ${
-          isSelected 
-            ? 'bg-warning-bg' 
-            : isFocused
-            ? 'bg-background-secondary'
-            : 'hover:bg-background-tertiary'
-        }`}
-      >
-        <div className="flex items-center justify-center">
-          <div
-            onClick={(e) => onCheckboxClick(run.run_id, e)}
-            className={`w-4 h-4 border rounded-sm flex items-center justify-center transition-colors ${
-              isSelected
-                ? 'bg-foreground border-foreground'
-                : 'border-muted-foreground hover:border-muted'
-            }`}
-          >
-            {isSelected && (
-              <svg className="w-3 h-3 text-background" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-              </svg>
-            )}
-          </div>
-        </div>
-        <div>
-          <Link 
-            to={`/runs/${run.run_id}`}
-            onClick={(e) => e.stopPropagation()}
-            className="text-[15px] text-foreground hover:underline"
-          >
-            {run.benchmark}
-          </Link>
-        </div>
-        <div>
-          <span className="text-[14px] text-muted-foreground truncate block">
-            {run.model}
-          </span>
-        </div>
-        <div>
-          {isCompleted && run.primary_metric !== undefined && run.primary_metric !== null ? (
-            <span className="text-[15px] text-foreground tabular-nums font-light">
-              {formatMetric(run.primary_metric, run.primary_metric_name)}
-            </span>
-          ) : (
-            <span className="text-[14px] text-muted-foreground">—</span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-wrap">
-          {displayTags.map((tag) => (
-            <span
-              key={tag}
-              className="px-1.5 py-0.5 text-[10px] text-muted border border-border-secondary"
-              style={{ backgroundColor: getTagColor(tag) }}
-            >
-              {tag}
-            </span>
-          ))}
-          {moreTags > 0 && (
-            <span className="text-[10px] text-muted-foreground">+{moreTags}</span>
-          )}
-        </div>
-        <div>
-          <StatusIndicator status={run.status} />
-        </div>
-        <div className="text-right">
-          <span className="text-[14px] text-muted-foreground">
-            {formatDate(run.created_at)}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Link
-      to={`/runs/${run.run_id}`}
-      onMouseEnter={() => onFocusChange?.(index)}
-      className={`grid ${gridCols} gap-6 py-4 border-b border-border transition-colors group ${
-        isFocused 
-          ? 'bg-background-secondary ring-1 ring-inset ring-border-secondary' 
-          : 'hover:bg-background-tertiary'
-      }`}
-    >
-      <div>
-        <span className="text-[15px] text-foreground">
-          {run.benchmark}
-        </span>
-      </div>
-      <div>
-        <span className="text-[14px] text-muted-foreground truncate block">
-          {run.model}
-        </span>
-      </div>
-      <div>
-        {isCompleted && run.primary_metric !== undefined && run.primary_metric !== null ? (
-          <span className="text-[15px] text-foreground tabular-nums font-light">
-            {formatMetric(run.primary_metric, run.primary_metric_name)}
-          </span>
-        ) : (
-          <span className="text-[14px] text-muted-foreground">—</span>
-        )}
-      </div>
-      <div className="flex items-center gap-1 flex-wrap">
-        {displayTags.map((tag) => (
-          <span
-            key={tag}
-            className="px-1.5 py-0.5 text-[10px] text-muted border border-border-secondary"
-            style={{ backgroundColor: getTagColor(tag) }}
-          >
-            {tag}
-          </span>
-        ))}
-        {moreTags > 0 && (
-          <span className="text-[10px] text-muted-foreground">+{moreTags}</span>
-        )}
-      </div>
-      <div>
-        <StatusIndicator status={run.status} />
-      </div>
-      <div className="text-right">
-        <span className="text-[14px] text-muted-foreground">
-          {formatDate(run.created_at)}
-        </span>
-      </div>
-    </Link>
-  );
-});
 
 const StatusIndicator = memo(function StatusIndicator({ status }: { status: RunSummary['status'] }) {
   const labels: Record<RunSummary['status'], string> = {
@@ -300,22 +138,16 @@ function RunCard({
     }
   };
 
-  const CardWrapper = selectable ? 'div' : Link;
-  const cardProps = selectable 
-    ? { onClick: handleCardClick, onMouseEnter: onFocus }
-    : { to: `/runs/${run.run_id}`, onMouseEnter: onFocus };
+  const baseClassName = `block p-4 border border-border transition-colors min-h-[44px] ${
+    isSelected 
+      ? 'bg-warning-bg border-warning-border' 
+      : isFocused
+      ? 'bg-background-secondary'
+      : 'bg-background-secondary hover:bg-background-tertiary'
+  } ${selectable ? 'cursor-pointer' : ''}`;
 
-  return (
-    <CardWrapper
-      {...(cardProps as Record<string, unknown>)}
-      className={`block p-4 border border-border transition-colors min-h-[44px] ${
-        isSelected 
-          ? 'bg-warning-bg border-warning-border' 
-          : isFocused
-          ? 'bg-background-secondary'
-          : 'bg-background-secondary hover:bg-background-tertiary'
-      } ${selectable ? 'cursor-pointer' : ''}`}
-    >
+  const innerContent = (
+    <>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex-1 min-w-0">
           {selectable ? (
@@ -392,7 +224,21 @@ function RunCard({
           )}
         </div>
       )}
-    </CardWrapper>
+    </>
+  );
+
+  if (selectable) {
+    return (
+      <div onClick={handleCardClick} onMouseEnter={onFocus} className={baseClassName}>
+        {innerContent}
+      </div>
+    );
+  }
+
+  return (
+    <Link to={`/runs/${run.run_id}`} onMouseEnter={onFocus} className={baseClassName}>
+      {innerContent}
+    </Link>
   );
 }
 

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Suspense, lazy } from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
@@ -7,14 +7,28 @@ import { ThemeProvider } from './context/ThemeContext'
 import { KeyboardShortcutsProvider } from './context/KeyboardShortcutsContext'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
-import Dashboard from './pages/Dashboard'
-import NewRun from './pages/NewRun'
-import RunDetail from './pages/RunDetail'
-import EvalViewer from './pages/EvalViewer'
-import Compare from './pages/Compare'
-import Login from './pages/Login'
-import Settings from './pages/Settings'
 import './index.css'
+
+// Lazy load route components for code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const NewRun = lazy(() => import('./pages/NewRun'))
+const RunDetail = lazy(() => import('./pages/RunDetail'))
+const EvalViewer = lazy(() => import('./pages/EvalViewer'))
+const Compare = lazy(() => import('./pages/Compare'))
+const Login = lazy(() => import('./pages/Login'))
+const Settings = lazy(() => import('./pages/Settings'))
+
+// Loading fallback component
+function PageLoader() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-8 h-8 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+        <p className="text-[13px] text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  )
+}
 
 // Root layout component that wraps all routes with providers
 function RootLayout() {
@@ -67,18 +81,18 @@ function RootLayout() {
   )
 }
 
-// Create router with RootLayout wrapper
+// Create router with RootLayout wrapper and lazy loading
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
-      { path: '/', element: <NewRun /> },
-      { path: '/history', element: <Dashboard /> },
-      { path: '/runs/:id', element: <RunDetail /> },
-      { path: '/runs/:id/eval/*', element: <EvalViewer /> },
-      { path: '/compare', element: <Compare /> },
-      { path: '/login', element: <Login /> },
-      { path: '/settings', element: <Settings /> },
+      { path: '/', element: <Suspense fallback={<PageLoader />}><NewRun /></Suspense> },
+      { path: '/history', element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
+      { path: '/runs/:id', element: <Suspense fallback={<PageLoader />}><RunDetail /></Suspense> },
+      { path: '/runs/:id/eval/*', element: <Suspense fallback={<PageLoader />}><EvalViewer /></Suspense> },
+      { path: '/compare', element: <Suspense fallback={<PageLoader />}><Compare /></Suspense> },
+      { path: '/login', element: <Suspense fallback={<PageLoader />}><Login /></Suspense> },
+      { path: '/settings', element: <Suspense fallback={<PageLoader />}><Settings /></Suspense> },
     ],
   },
 ])

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Breakdown } from '../api/client';
 import { useTheme } from '../context/ThemeContext';
 
@@ -44,7 +45,7 @@ interface BreakdownSectionProps {
   breakdown: Breakdown;
 }
 
-function BreakdownSection({ breakdown }: BreakdownSectionProps) {
+const BreakdownSection = memo(function BreakdownSection({ breakdown }: BreakdownSectionProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   
@@ -87,9 +88,9 @@ function BreakdownSection({ breakdown }: BreakdownSectionProps) {
       </div>
     </div>
   );
-}
+});
 
-export default function BreakdownChart({ breakdowns }: BreakdownChartProps) {
+export default memo(function BreakdownChart({ breakdowns }: BreakdownChartProps) {
   if (breakdowns.length === 0) {
     return null;
   }
@@ -112,4 +113,4 @@ export default function BreakdownChart({ breakdowns }: BreakdownChartProps) {
       </div>
     </div>
   );
-}
+});
