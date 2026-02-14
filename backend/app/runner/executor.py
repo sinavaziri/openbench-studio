@@ -27,6 +27,17 @@ from app.services.run_store import run_store
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Import WebSocket broadcasting (deferred to avoid circular imports)
+_ws_broadcast = None
+
+def _get_ws_broadcast():
+    """Lazy import of WebSocket broadcast function to avoid circular imports."""
+    global _ws_broadcast
+    if _ws_broadcast is None:
+        from app.api.routes.ws import broadcast_run_event
+        _ws_broadcast = broadcast_run_event
+    return _ws_broadcast
+
 
 class BenchCLINotFoundError(Exception):
     """Raised when bench CLI is required but not available."""
@@ -228,6 +239,16 @@ class RunExecutor:
             artifact_dir=str(artifact_dir),
         )
         
+        # Broadcast status change via WebSocket
+        try:
+            broadcast = _get_ws_broadcast()
+            await broadcast(run.run_id, "status", {
+                "status": "running",
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            logger.debug(f"Run {run.run_id}: WebSocket broadcast failed: {e}")
+        
         # Open log files
         stdout_path = artifact_dir / "stdout.log"
         stderr_path = artifact_dir / "stderr.log"
@@ -338,6 +359,18 @@ class RunExecutor:
                     primary_metric_name=primary_metric_name,
                 )
                 
+                # Broadcast final status via WebSocket
+                try:
+                    broadcast = _get_ws_broadcast()
+                    event_type = status.value if hasattr(status, 'value') else str(status)
+                    await broadcast(run.run_id, event_type, {
+                        "exit_code": exit_code,
+                        "error": error,
+                        "finished_at": datetime.utcnow().isoformat(),
+                    })
+                except Exception as e:
+                    logger.debug(f"Run {run.run_id}: WebSocket broadcast failed: {e}")
+                
         except FileNotFoundError as e:
             logger.error(f"Run {run.run_id}: Command not found: {e}")
             self._running_processes.pop(run.run_id, None)
@@ -398,6 +431,15 @@ class RunExecutor:
             status=RunStatus.CANCELED,
             finished_at=datetime.utcnow(),
         )
+        
+        # Broadcast cancel via WebSocket
+        try:
+            broadcast = _get_ws_broadcast()
+            await broadcast(run_id, "canceled", {
+                "finished_at": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            logger.debug(f"Run {run_id}: WebSocket broadcast failed: {e}")
         
         logger.info(f"Run {run_id}: Canceled successfully")
         return True

@@ -9,6 +9,8 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
 import { parseError } from '../utils/errorMessages';
 import { exportSelectedRunsToCSV, exportSelectedRunsToJSON } from '../utils/export';
+import { useDashboardWebSocket, DashboardRunEvent } from '../hooks/useWebSocket';
+import ConnectionStatus from '../components/ConnectionStatus';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -45,6 +47,36 @@ export default function Dashboard() {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { isHelpOpen } = useKeyboardShortcuts();
+
+  // WebSocket for live updates
+  const handleRunStatus = useCallback((event: DashboardRunEvent) => {
+    setRuns((prevRuns) => 
+      prevRuns.map((run) =>
+        run.run_id === event.run_id
+          ? { ...run, status: event.status as RunSummary['status'] }
+          : run
+      )
+    );
+  }, []);
+
+  // Defined later, but declared here for useCallback dependency
+  const loadRunsRef = useRef<() => void>(() => {});
+  
+  const handleRunCreated = useCallback((_event: DashboardRunEvent) => {
+    // Reload runs to get the new run with full data
+    loadRunsRef.current();
+  }, []);
+
+  const handleRunDeleted = useCallback((event: DashboardRunEvent) => {
+    setRuns((prevRuns) => prevRuns.filter((run) => run.run_id !== event.run_id));
+  }, []);
+
+  const { status: wsStatus, reconnectAttempts } = useDashboardWebSocket({
+    autoConnect: true,
+    onRunStatus: handleRunStatus,
+    onRunCreated: handleRunCreated,
+    onRunDeleted: handleRunDeleted,
+  });
 
   const loadRuns = useCallback(async () => {
     try {
@@ -89,15 +121,28 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Update the ref when loadRuns changes
+  useEffect(() => {
+    loadRunsRef.current = loadRuns;
+  }, [loadRuns]);
+
   useEffect(() => {
     loadRuns();
     loadTags();
     loadBenchmarks();
-    
-    // Poll for updates every 3 seconds
-    const interval = setInterval(loadRuns, 3000);
-    return () => clearInterval(interval);
   }, [loadRuns, loadTags, loadBenchmarks]);
+
+  // Fallback polling when WebSocket is not connected
+  useEffect(() => {
+    if (wsStatus === 'connected') {
+      // WebSocket is connected, no need to poll
+      return;
+    }
+    
+    // Poll for updates every 5 seconds when WebSocket is disconnected
+    const interval = setInterval(loadRuns, 5000);
+    return () => clearInterval(interval);
+  }, [wsStatus, loadRuns]);
 
   const handleToggleSelectionMode = () => {
     if (selectionMode) {
@@ -325,6 +370,15 @@ export default function Dashboard() {
     <Layout>
       {/* Header Section */}
       <div className="mb-16">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+            Overview
+          </h1>
+          <ConnectionStatus 
+            status={wsStatus} 
+            reconnectAttempts={reconnectAttempts}
+          />
+        </div>
         <div className="grid grid-cols-4 gap-8">
             <div>
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
