@@ -1,5 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import {
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  LineChart,
+  Line,
+  ResponsiveContainer,
+} from 'recharts';
 import { api, RunDetail } from '../api/client';
 import { useTheme } from '../context/ThemeContext';
 import Layout from '../components/Layout';
@@ -30,16 +47,17 @@ function truncateModel(model: string, maxLen: number = 24): string {
 }
 
 // Generate distinct colors for runs
+const RUN_COLORS = [
+  '#c9a227',   // gold
+  '#8b9dc3',   // light blue-gray
+  '#b4a7d6',   // lavender
+  '#e07c7c',   // coral
+  '#7cb07c',   // sage green
+  '#7cc9c9',   // teal
+];
+
 function getRunColor(index: number): string {
-  const colors = [
-    '#c9a227',   // gold
-    '#8b9dc3',   // light blue-gray
-    '#b4a7d6',   // lavender
-    '#a8a8a8',   // silver
-    '#6b6b6b',   // gray
-    '#e07c7c',   // coral
-  ];
-  return colors[index % colors.length];
+  return RUN_COLORS[index % RUN_COLORS.length];
 }
 
 interface CompareMetric {
@@ -57,16 +75,501 @@ interface CompareBreakdown {
   items: CompareBreakdownItem[];
 }
 
+interface MetricStats {
+  name: string;
+  best: { value: number; runIndex: number } | null;
+  worst: { value: number; runIndex: number } | null;
+  avg: number | null;
+}
+
+// Chart export utility
+async function exportChartAsPng(element: HTMLElement, filename: string) {
+  try {
+    const { toPng } = await import('html-to-image');
+    const dataUrl = await toPng(element, {
+      backgroundColor: 'transparent',
+      pixelRatio: 2,
+    });
+    const link = document.createElement('a');
+    link.download = `${filename}.png`;
+    link.href = dataUrl;
+    link.click();
+  } catch (err) {
+    console.error('Failed to export chart:', err);
+  }
+}
+
+// Export button component
+function ExportButton({ chartRef, filename }: { chartRef: React.RefObject<HTMLDivElement | null>; filename: string }) {
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (!chartRef.current) return;
+    setExporting(true);
+    await exportChartAsPng(chartRef.current, filename);
+    setExporting(false);
+  };
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={exporting}
+      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+      title="Export as PNG"
+    >
+      {exporting ? 'Exporting…' : '↓ PNG'}
+    </button>
+  );
+}
+
+// Summary statistics component
+function SummaryStats({ metrics, runs }: { metrics: CompareMetric[]; runs: RunDetail[] }) {
+  const { resolvedTheme } = useTheme();
+  void runs; // Used for run count context
+  
+  const stats: MetricStats[] = metrics.map((metric) => {
+    const validValues = metric.values
+      .map((v, i) => ({ value: v, index: i }))
+      .filter((item): item is { value: number; index: number } => item.value !== null);
+
+    if (validValues.length === 0) {
+      return { name: metric.name, best: null, worst: null, avg: null };
+    }
+
+    const sorted = [...validValues].sort((a, b) => b.value - a.value);
+    const sum = validValues.reduce((acc, v) => acc + v.value, 0);
+
+    return {
+      name: metric.name,
+      best: { value: sorted[0].value, runIndex: sorted[0].index },
+      worst: sorted.length > 1 ? { value: sorted[sorted.length - 1].value, runIndex: sorted[sorted.length - 1].index } : null,
+      avg: sum / validValues.length,
+    };
+  });
+
+  const bgColor = resolvedTheme === 'dark' ? 'bg-background-secondary' : 'bg-background-secondary';
+
+  return (
+    <div className={`${bgColor} border border-border p-5`}>
+      <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
+        Summary Statistics
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {stats.map((stat) => (
+          <div key={stat.name} className="border border-border p-4">
+            <p className="text-[13px] text-muted mb-3">{formatMetricName(stat.name)}</p>
+            <div className="space-y-2">
+              {stat.best && (
+                <div className="flex justify-between items-center">
+                  <span className="text-[12px] text-muted-foreground">Best</span>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-sm"
+                      style={{ backgroundColor: getRunColor(stat.best.runIndex) }}
+                    />
+                    <span className="text-[14px] text-foreground font-medium tabular-nums">
+                      {formatValue(stat.best.value)}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {stat.worst && (
+                <div className="flex justify-between items-center">
+                  <span className="text-[12px] text-muted-foreground">Worst</span>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-sm"
+                      style={{ backgroundColor: getRunColor(stat.worst.runIndex) }}
+                    />
+                    <span className="text-[14px] text-muted tabular-nums">
+                      {formatValue(stat.worst.value)}
+                    </span>
+                  </div>
+                </div>
+              )}
+              {stat.avg !== null && (
+                <div className="flex justify-between items-center">
+                  <span className="text-[12px] text-muted-foreground">Average</span>
+                  <span className="text-[14px] text-foreground-secondary tabular-nums">
+                    {formatValue(stat.avg)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Radar chart for overall metrics
+function MetricsRadarChart({ metrics, runs }: { metrics: CompareMetric[]; runs: RunDetail[] }) {
+  const { resolvedTheme } = useTheme();
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  // Normalize values to 0-100 scale for radar chart
+  const radarData = metrics.map((metric) => {
+    const maxVal = Math.max(...metric.values.filter((v): v is number => v !== null), 0.001);
+    const dataPoint: Record<string, string | number> = {
+      metric: formatMetricName(metric.name),
+    };
+    runs.forEach((run, index) => {
+      const value = metric.values[index];
+      dataPoint[run.run_id] = value !== null ? (value / maxVal) * 100 : 0;
+      dataPoint[`${run.run_id}_raw`] = value !== null ? value : 0;
+    });
+    return dataPoint;
+  });
+
+  if (metrics.length < 3) return null; // Need at least 3 metrics for radar
+
+  const gridColor = resolvedTheme === 'dark' ? '#333' : '#ddd';
+  const textColor = resolvedTheme === 'dark' ? '#888' : '#666';
+  const tooltipBg = resolvedTheme === 'dark' ? '#1a1a1a' : '#fff';
+  const tooltipBorder = resolvedTheme === 'dark' ? '#333' : '#ddd';
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+          Metrics Overview (Radar)
+        </p>
+        <ExportButton chartRef={chartRef} filename="metrics-radar" />
+      </div>
+      <div ref={chartRef} className="bg-background-secondary border border-border p-6">
+        <ResponsiveContainer width="100%" height={400}>
+          <RadarChart data={radarData}>
+            <PolarGrid stroke={gridColor} />
+            <PolarAngleAxis
+              dataKey="metric"
+              tick={{ fill: textColor, fontSize: 11 }}
+            />
+            <PolarRadiusAxis
+              angle={30}
+              domain={[0, 100]}
+              tick={{ fill: textColor, fontSize: 10 }}
+              tickFormatter={() => ''}
+            />
+            {runs.map((run, index) => (
+              <Radar
+                key={run.run_id}
+                name={truncateModel(run.model, 20)}
+                dataKey={run.run_id}
+                stroke={getRunColor(index)}
+                fill={getRunColor(index)}
+                fillOpacity={0.15}
+                strokeWidth={2}
+              />
+            ))}
+            <Tooltip
+              contentStyle={{
+                backgroundColor: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
+                borderRadius: 0,
+                fontSize: 12,
+              }}
+              formatter={(_value, name, props) => {
+                const rawKey = `${props.dataKey}_raw`;
+                const rawValue = props.payload[rawKey];
+                return [formatValue(rawValue as number), name];
+              }}
+            />
+            <Legend
+              wrapperStyle={{ fontSize: 12 }}
+              iconType="square"
+              iconSize={10}
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// Grouped bar chart for breakdowns
+function BreakdownBarChart({ breakdown, runs }: { breakdown: CompareBreakdown; runs: RunDetail[] }) {
+  const { resolvedTheme } = useTheme();
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  const barData = breakdown.items.map((item) => {
+    const dataPoint: Record<string, string | number> = {
+      category: formatMetricName(item.key),
+    };
+    runs.forEach((run, index) => {
+      dataPoint[run.run_id] = item.values[index] ?? 0;
+    });
+    return dataPoint;
+  });
+
+  const gridColor = resolvedTheme === 'dark' ? '#333' : '#ddd';
+  const textColor = resolvedTheme === 'dark' ? '#888' : '#666';
+  const tooltipBg = resolvedTheme === 'dark' ? '#1a1a1a' : '#fff';
+  const tooltipBorder = resolvedTheme === 'dark' ? '#333' : '#ddd';
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[13px] text-muted-foreground uppercase tracking-[0.1em]">
+          {formatMetricName(breakdown.name)}
+        </p>
+        <ExportButton chartRef={chartRef} filename={`breakdown-${breakdown.name}`} />
+      </div>
+      <div ref={chartRef} className="bg-background-secondary border border-border p-6">
+        <ResponsiveContainer width="100%" height={Math.max(250, breakdown.items.length * 40)}>
+          <BarChart
+            data={barData}
+            layout="vertical"
+            margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+            <XAxis
+              type="number"
+              tick={{ fill: textColor, fontSize: 11 }}
+              tickFormatter={(v) => formatValue(v)}
+              domain={[0, 'auto']}
+            />
+            <YAxis
+              type="category"
+              dataKey="category"
+              tick={{ fill: textColor, fontSize: 11 }}
+              width={75}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
+                borderRadius: 0,
+                fontSize: 12,
+              }}
+              formatter={(value) => formatValue(value as number)}
+            />
+            {runs.map((run, index) => (
+              <Bar
+                key={run.run_id}
+                dataKey={run.run_id}
+                name={truncateModel(run.model, 20)}
+                fill={getRunColor(index)}
+                radius={[0, 2, 2, 0]}
+              />
+            ))}
+            <Legend
+              wrapperStyle={{ fontSize: 12 }}
+              iconType="square"
+              iconSize={10}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// Line chart for temporal data (if runs have created_at progression)
+function TemporalLineChart({ metrics, runs }: { metrics: CompareMetric[]; runs: RunDetail[] }) {
+  const { resolvedTheme } = useTheme();
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  // Check if runs have temporal progression (sorted by date)
+  const sortedRuns = [...runs].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  // Only show if there's time variance (more than 1 hour between first and last)
+  const timeDiff = new Date(sortedRuns[sortedRuns.length - 1].created_at).getTime() -
+                   new Date(sortedRuns[0].created_at).getTime();
+  
+  if (timeDiff < 3600000 || runs.length < 2) return null; // Less than 1 hour or not enough runs
+
+  // Use primary metric for line chart
+  const primaryMetric = metrics.find((m) => 
+    runs.some((r) => r.summary?.primary_metric?.name === m.name)
+  );
+
+  if (!primaryMetric) return null;
+
+  const lineData = sortedRuns.map((run) => {
+    const originalIndex = runs.findIndex((r) => r.run_id === run.run_id);
+    return {
+      date: new Date(run.created_at).toLocaleDateString(),
+      model: truncateModel(run.model, 16),
+      value: primaryMetric.values[originalIndex] ?? 0,
+      color: getRunColor(originalIndex),
+      runId: run.run_id,
+    };
+  });
+
+  const gridColor = resolvedTheme === 'dark' ? '#333' : '#ddd';
+  const textColor = resolvedTheme === 'dark' ? '#888' : '#666';
+  const tooltipBg = resolvedTheme === 'dark' ? '#1a1a1a' : '#fff';
+  const tooltipBorder = resolvedTheme === 'dark' ? '#333' : '#ddd';
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+          {formatMetricName(primaryMetric.name)} Over Time
+        </p>
+        <ExportButton chartRef={chartRef} filename="temporal-chart" />
+      </div>
+      <div ref={chartRef} className="bg-background-secondary border border-border p-6">
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={lineData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+            <XAxis
+              dataKey="date"
+              tick={{ fill: textColor, fontSize: 11 }}
+            />
+            <YAxis
+              tick={{ fill: textColor, fontSize: 11 }}
+              tickFormatter={(v) => formatValue(v)}
+              domain={['auto', 'auto']}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
+                borderRadius: 0,
+                fontSize: 12,
+              }}
+              formatter={(value, _name, props) => [
+                formatValue(value as number),
+                props.payload.model
+              ]}
+              labelFormatter={(label) => `Date: ${label}`}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke={getRunColor(0)}
+              strokeWidth={2}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                const runIndex = runs.findIndex((r) => r.run_id === payload.runId);
+                return (
+                  <circle
+                    key={payload.runId}
+                    cx={cx}
+                    cy={cy}
+                    r={6}
+                    fill={getRunColor(runIndex)}
+                    stroke="none"
+                  />
+                );
+              }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="flex flex-wrap gap-3 mt-4 justify-center">
+          {sortedRuns.map((run) => {
+            const originalIndex = runs.findIndex((r) => r.run_id === run.run_id);
+            return (
+              <div key={run.run_id} className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: getRunColor(originalIndex) }}
+                />
+                <span className="text-[11px] text-muted">{truncateModel(run.model, 16)}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Primary metric bar chart (enhanced)
+function PrimaryMetricChart({ runs, metrics }: { runs: RunDetail[]; metrics: CompareMetric[] }) {
+  const { resolvedTheme } = useTheme();
+  const chartRef = useRef<HTMLDivElement>(null);
+
+  // Find primary metric
+  const primaryMetric = metrics.find((m) =>
+    runs.some((r) => r.summary?.primary_metric?.name === m.name)
+  );
+
+  if (!primaryMetric) return null;
+
+  const barData = runs.map((run, index) => ({
+    model: truncateModel(run.model, 20),
+    value: primaryMetric.values[index] ?? 0,
+    fill: getRunColor(index),
+    runId: run.run_id,
+  }));
+
+  const gridColor = resolvedTheme === 'dark' ? '#333' : '#ddd';
+  const textColor = resolvedTheme === 'dark' ? '#888' : '#666';
+  const tooltipBg = resolvedTheme === 'dark' ? '#1a1a1a' : '#fff';
+  const tooltipBorder = resolvedTheme === 'dark' ? '#333' : '#ddd';
+
+  return (
+    <div className="mb-12">
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+          {formatMetricName(primaryMetric.name)}
+        </p>
+        <ExportButton chartRef={chartRef} filename="primary-metric" />
+      </div>
+      <div ref={chartRef} className="bg-background-secondary border border-border p-6">
+        <ResponsiveContainer width="100%" height={Math.max(200, runs.length * 50)}>
+          <BarChart
+            data={barData}
+            layout="vertical"
+            margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+            <XAxis
+              type="number"
+              tick={{ fill: textColor, fontSize: 11 }}
+              tickFormatter={(v) => formatValue(v)}
+              domain={[0, 'auto']}
+            />
+            <YAxis
+              type="category"
+              dataKey="model"
+              tick={{ fill: textColor, fontSize: 12 }}
+              width={95}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: tooltipBg,
+                border: `1px solid ${tooltipBorder}`,
+                borderRadius: 0,
+                fontSize: 12,
+              }}
+              formatter={(value) => [formatValue(value as number), formatMetricName(primaryMetric.name)]}
+            />
+            <Bar
+              dataKey="value"
+              radius={[0, 4, 4, 0]}
+              label={{
+                position: 'right',
+                fill: textColor,
+                fontSize: 12,
+                formatter: (v: unknown) => formatValue(v as number),
+              }}
+            >
+              {barData.map((entry) => (
+                <rect key={entry.runId} fill={entry.fill} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 export default function Compare() {
   const [searchParams] = useSearchParams();
-  const { resolvedTheme } = useTheme();
   const [runs, setRuns] = useState<RunDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
 
   const runIds = searchParams.get('ids')?.split(',').filter(Boolean) || [];
 
-  const loadRuns = async () => {
+  const loadRuns = useCallback(async () => {
     if (runIds.length === 0) {
       setLoading(false);
       return;
@@ -89,11 +592,11 @@ export default function Compare() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [runIds.join(',')]);
 
   useEffect(() => {
     loadRuns();
-  }, [searchParams]);
+  }, [loadRuns]);
 
   // Check if benchmarks are different
   const benchmarks = [...new Set(runs.map((r) => r.benchmark))];
@@ -131,23 +634,6 @@ export default function Compare() {
     }));
   };
 
-  // Get primary metric for bar chart
-  const getPrimaryMetricData = (): { labels: string[]; values: number[]; name: string } | null => {
-    const primaryMetrics = runs.map((run) => run.summary?.primary_metric);
-    const validMetrics = primaryMetrics.filter((m) => m !== null && m !== undefined);
-    
-    if (validMetrics.length === 0) return null;
-
-    // Use first non-null primary metric name
-    const metricName = validMetrics[0]!.name;
-
-    return {
-      name: metricName,
-      labels: runs.map((r) => truncateModel(r.model)),
-      values: runs.map((r) => r.summary?.primary_metric?.value ?? 0),
-    };
-  };
-
   // Aggregate breakdowns across runs
   const aggregateBreakdowns = (): CompareBreakdown[] => {
     const breakdownMap = new Map<string, Map<string, (number | null)[]>>();
@@ -181,11 +667,7 @@ export default function Compare() {
   };
 
   const metrics = aggregateMetrics();
-  const primaryMetricData = getPrimaryMetricData();
   const breakdowns = aggregateBreakdowns();
-
-  // Chart bar track color based on theme
-  const barTrackColor = resolvedTheme === 'dark' ? '#111' : '#e5e5e5';
 
   if (loading) {
     return (
@@ -240,10 +722,6 @@ export default function Compare() {
     );
   }
 
-  const maxPrimaryValue = primaryMetricData
-    ? Math.max(...primaryMetricData.values.filter((v) => v > 0), 0.01)
-    : 1;
-
   return (
     <Layout>
       {/* Header */}
@@ -297,45 +775,35 @@ export default function Compare() {
         </div>
       </div>
 
+      {/* Summary Statistics */}
+      {metrics.length > 0 && (
+        <div className="mb-12">
+          <SummaryStats metrics={metrics} runs={runs} />
+        </div>
+      )}
+
       {/* Primary Metric Bar Chart */}
-      {primaryMetricData && (
+      <PrimaryMetricChart runs={runs} metrics={metrics} />
+
+      {/* Radar Chart for Overall Metrics */}
+      <MetricsRadarChart metrics={metrics} runs={runs} />
+
+      {/* Temporal Line Chart */}
+      <TemporalLineChart metrics={metrics} runs={runs} />
+
+      {/* Breakdown Bar Charts */}
+      {breakdowns.length > 0 && (
         <div className="mb-12">
           <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
-            {formatMetricName(primaryMetricData.name)}
+            Category Breakdowns
           </p>
-          <div className="space-y-3">
-            {runs.map((run, index) => {
-              const value = primaryMetricData.values[index];
-              const percentage = (value / maxPrimaryValue) * 100;
-
-              return (
-                <div key={run.run_id} className="group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-48 truncate">
-                      <span className="text-[13px] text-muted">
-                        {truncateModel(run.model)}
-                      </span>
-                    </div>
-                    <div 
-                      className="flex-1 h-8 rounded-sm overflow-hidden relative"
-                      style={{ backgroundColor: barTrackColor }}
-                    >
-                      <div
-                        className="h-full transition-all duration-500 ease-out"
-                        style={{
-                          width: `${Math.max(percentage, 2)}%`,
-                          backgroundColor: getRunColor(index),
-                        }}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-foreground font-light tabular-nums">
-                        {formatValue(value)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {breakdowns.map((breakdown) => (
+            <BreakdownBarChart
+              key={breakdown.name}
+              breakdown={breakdown}
+              runs={runs}
+            />
+          ))}
         </div>
       )}
 
@@ -343,7 +811,7 @@ export default function Compare() {
       {metrics.length > 0 && (
         <div className="mb-12">
           <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
-            All Metrics
+            All Metrics (Table)
           </p>
           <div className="bg-background-secondary border border-border overflow-x-auto">
             <table className="w-full">
@@ -399,6 +867,7 @@ export default function Compare() {
                             }`}
                           >
                             {value !== null ? formatValue(value) : '—'}
+                            {isBest && <span className="ml-1 text-[10px] text-muted-foreground">✓</span>}
                           </td>
                         );
                       })}
@@ -407,83 +876,6 @@ export default function Compare() {
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
-
-      {/* Breakdown Comparison */}
-      {breakdowns.length > 0 && (
-        <div className="mb-12">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
-            Breakdowns
-          </p>
-          <div className="space-y-8">
-            {breakdowns.map((breakdown) => (
-              <div
-                key={breakdown.name}
-                className="bg-background-secondary border border-border overflow-x-auto"
-              >
-                <div className="px-5 py-3 border-b border-border">
-                  <p className="text-[13px] text-muted-foreground uppercase tracking-[0.1em]">
-                    {formatMetricName(breakdown.name)}
-                  </p>
-                </div>
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left px-5 py-3 text-[12px] text-muted-foreground uppercase tracking-[0.1em] font-normal">
-                        Category
-                      </th>
-                      {runs.map((run, index) => (
-                        <th
-                          key={run.run_id}
-                          className="text-right px-5 py-3 text-[12px] text-muted-foreground font-normal"
-                        >
-                          <div className="flex items-center justify-end gap-2">
-                            <div
-                              className="w-2 h-2 rounded-sm"
-                              style={{ backgroundColor: getRunColor(index) }}
-                            />
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {breakdown.items.map((item) => {
-                      const values = item.values.filter((v) => v !== null) as number[];
-                      const maxVal = Math.max(...values, 0);
-
-                      return (
-                        <tr key={item.key} className="border-b border-background-tertiary">
-                          <td className="px-5 py-3 text-[13px] text-muted">
-                            {formatMetricName(item.key)}
-                          </td>
-                          {item.values.map((value, index) => {
-                            const isBest = value === maxVal && values.length > 1;
-
-                            return (
-                              <td
-                                key={index}
-                                className={`px-5 py-3 text-right text-[14px] tabular-nums ${
-                                  value === null
-                                    ? 'text-muted-foreground'
-                                    : isBest
-                                    ? 'text-foreground'
-                                    : 'text-muted'
-                                }`}
-                              >
-                                {value !== null ? formatValue(value) : '—'}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ))}
           </div>
         </div>
       )}
