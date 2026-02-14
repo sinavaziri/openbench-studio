@@ -10,25 +10,35 @@ const DEFAULT_TIMEOUT = 30000;
 export class ApiError extends Error {
   public readonly statusCode: number;
   public readonly detail: string;
+  public readonly code?: string;
   public readonly isNetworkError: boolean;
   public readonly isAuthError: boolean;
+  public readonly isTimeout: boolean;
   public readonly recoverable: boolean;
 
   constructor(
     message: string,
     statusCode: number = 0,
     detail?: string,
-    options?: { isNetworkError?: boolean; isAuthError?: boolean }
+    options?: { 
+      isNetworkError?: boolean; 
+      isAuthError?: boolean;
+      isTimeout?: boolean;
+      code?: string;
+    }
   ) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
     this.detail = detail || message;
+    this.code = options?.code;
     this.isNetworkError = options?.isNetworkError ?? false;
     this.isAuthError = options?.isAuthError ?? (statusCode === 401);
+    this.isTimeout = options?.isTimeout ?? false;
     
     // Determine if error is recoverable (can retry)
     this.recoverable = this.isNetworkError || 
+      this.isTimeout ||
       statusCode === 429 || // Rate limited
       statusCode >= 500;    // Server errors
   }
@@ -326,11 +336,19 @@ class ApiClient {
 
       if (!response.ok) {
         let errorDetail = '';
+        let errorCode: string | undefined;
         let errorBody: Record<string, unknown> = {};
         
         try {
           errorBody = await response.json();
-          errorDetail = (errorBody.detail as string) || '';
+          // Handle both flat detail and structured error response
+          if (typeof errorBody.detail === 'string') {
+            errorDetail = errorBody.detail;
+          } else if (errorBody.error && typeof errorBody.error === 'object') {
+            const err = errorBody.error as Record<string, unknown>;
+            errorDetail = (err.message as string) || (err.detail as string) || '';
+            errorCode = err.code as string | undefined;
+          }
         } catch {
           // Response wasn't JSON
         }
@@ -341,6 +359,7 @@ class ApiClient {
           401: 'Your session has expired. Please sign in again.',
           403: "You don't have permission to perform this action.",
           404: errorDetail || 'The requested resource was not found.',
+          408: 'The request timed out. Please try again.',
           409: errorDetail || 'This action conflicts with existing data.',
           422: errorDetail || 'The provided data is invalid.',
           429: 'Too many requests. Please wait a moment and try again.',
@@ -363,7 +382,11 @@ class ApiClient {
           userMessage,
           response.status,
           errorDetail,
-          { isAuthError: response.status === 401 }
+          { 
+            isAuthError: response.status === 401,
+            isTimeout: response.status === 408 || response.status === 504,
+            code: errorCode,
+          }
         );
       }
 
@@ -386,9 +409,9 @@ class ApiClient {
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw new ApiError(
           'The request timed out. Please check your connection and try again.',
-          0,
+          408,
           'Request timeout',
-          { isNetworkError: true }
+          { isNetworkError: true, isTimeout: true }
         );
       }
       

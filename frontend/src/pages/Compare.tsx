@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { api, RunDetail } from '../api/client';
 import { useTheme } from '../context/ThemeContext';
 import Layout from '../components/Layout';
+import { ErrorState } from '../components/ErrorBoundary';
+import { parseError } from '../utils/errorMessages';
 
 function formatValue(value: number, unit?: string | null): string {
   if (unit === null || unit === undefined) {
@@ -60,30 +62,36 @@ export default function Compare() {
   const { resolvedTheme } = useTheme();
   const [runs, setRuns] = useState<RunDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
 
   const runIds = searchParams.get('ids')?.split(',').filter(Boolean) || [];
 
-  useEffect(() => {
+  const loadRuns = async () => {
     if (runIds.length === 0) {
       setLoading(false);
       return;
     }
 
-    const loadRuns = async () => {
-      try {
-        const loadedRuns = await Promise.all(
-          runIds.map((id) => api.getRun(id))
-        );
-        setRuns(loadedRuns);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load runs');
-      } finally {
-        setLoading(false);
-      }
-    };
+    try {
+      const loadedRuns = await Promise.all(
+        runIds.map((id) => api.getRun(id))
+      );
+      setRuns(loadedRuns);
+      setError(null);
+    } catch (err) {
+      const parsed = parseError(err, 'comparing-runs');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadRuns();
   }, [searchParams]);
 
@@ -211,15 +219,23 @@ export default function Compare() {
   if (error) {
     return (
       <Layout>
-        <div className="text-center py-16">
-          <p className="text-[15px] text-muted mb-4">{error}</p>
+        <ErrorState
+          title={error.title}
+          message={error.message}
+          action={error.action}
+          onRetry={error.recoverable ? () => {
+            setError(null);
+            setLoading(true);
+            loadRuns();
+          } : undefined}
+        >
           <Link
             to="/history"
-            className="text-[14px] text-foreground hover:opacity-70 transition-opacity"
+            className="mt-4 inline-block text-[14px] text-muted-foreground hover:text-foreground transition-colors"
           >
             ← Back to History
           </Link>
-        </div>
+        </ErrorState>
       </Layout>
     );
   }

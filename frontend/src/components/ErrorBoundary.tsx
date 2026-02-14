@@ -234,3 +234,89 @@ export function ErrorState({
     </div>
   );
 }
+
+/**
+ * Network status indicator for connection issues
+ */
+export function NetworkErrorBanner({ 
+  onRetry,
+  message = "You appear to be offline. Check your connection.",
+}: { 
+  onRetry?: () => void;
+  message?: string;
+}) {
+  return (
+    <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-error-bg border border-error-border p-4 rounded shadow-lg z-50">
+      <div className="flex items-start gap-3">
+        <svg className="w-5 h-5 text-error flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" />
+        </svg>
+        <div className="flex-1">
+          <p className="text-[14px] text-error font-medium mb-1">Connection Lost</p>
+          <p className="text-[13px] text-muted">{message}</p>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="mt-2 text-[12px] text-muted hover:text-foreground transition-colors"
+            >
+              Try to reconnect
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Loading state with optional message
+ */
+export function LoadingState({
+  message = "Loading...",
+}: {
+  message?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4">
+      <div className="w-8 h-8 border-2 border-border-secondary border-t-foreground rounded-full animate-spin mb-4" />
+      <p className="text-[14px] text-muted">{message}</p>
+    </div>
+  );
+}
+
+/**
+ * Warning banner for non-fatal issues
+ */
+export function WarningBanner({
+  title,
+  message,
+  onDismiss,
+}: {
+  title: string;
+  message: string;
+  onDismiss?: () => void;
+}) {
+  return (
+    <div className="bg-warning-bg border border-warning-border p-4 rounded">
+      <div className="flex items-start gap-3">
+        <svg className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div className="flex-1">
+          <p className="text-[14px] text-warning font-medium mb-1">{title}</p>
+          <p className="text-[13px] text-warning/70">{message}</p>
+        </div>
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="text-warning/50 hover:text-warning transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

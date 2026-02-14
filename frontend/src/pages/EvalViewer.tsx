@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import { ErrorState } from '../components/ErrorBoundary';
+import { parseError } from '../utils/errorMessages';
 
 interface Score {
   value: number | null;
@@ -45,27 +47,36 @@ export default function EvalViewer() {
   const navigate = useNavigate();
   const [evalData, setEvalData] = useState<EvalData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   const [expandedSample, setExpandedSample] = useState<string | number | null>(null);
 
-  useEffect(() => {
+  const fetchEvalData = async () => {
     if (!id || !evalPath) return;
 
-    const fetchEvalData = async () => {
-      try {
-        const response = await fetch(`/api/runs/${id}/eval-data/${evalPath}`);
-        if (!response.ok) {
-          throw new Error(`Failed to load eval data: ${response.status}`);
-        }
-        const data = await response.json();
-        setEvalData(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load eval data');
-      } finally {
-        setLoading(false);
+    try {
+      const response = await fetch(`/api/runs/${id}/eval-data/${evalPath}`);
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const errorMessage = errorBody.detail || `HTTP ${response.status}`;
+        throw new Error(errorMessage);
       }
-    };
+      const data = await response.json();
+      setEvalData(data);
+      setError(null);
+    } catch (err) {
+      const parsed = parseError(err, 'loading-eval');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchEvalData();
   }, [id, evalPath]);
 
@@ -80,17 +91,32 @@ export default function EvalViewer() {
   }
 
   if (error || !evalData) {
+    const errorInfo = error || {
+      title: 'Unable to Load Evaluation',
+      message: 'The evaluation results could not be loaded.',
+      action: 'The run may not have completed yet, or the results may be unavailable.',
+      recoverable: true,
+    };
+    
     return (
       <Layout>
-        <div className="text-center py-16">
-          <p className="text-[15px] text-muted mb-4">{error || 'Failed to load evaluation'}</p>
+        <ErrorState
+          title={errorInfo.title}
+          message={errorInfo.message}
+          action={errorInfo.action}
+          onRetry={errorInfo.recoverable ? () => {
+            setError(null);
+            setLoading(true);
+            fetchEvalData();
+          } : undefined}
+        >
           <button
             onClick={() => navigate(`/runs/${id}`)}
-            className="text-[14px] text-foreground hover:opacity-70 transition-opacity"
+            className="mt-4 text-[14px] text-muted-foreground hover:text-foreground transition-colors"
           >
             ← Back to Run
           </button>
-        </div>
+        </ErrorState>
       </Layout>
     );
   }

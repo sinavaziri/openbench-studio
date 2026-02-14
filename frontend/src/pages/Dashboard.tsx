@@ -4,8 +4,10 @@ import toast from 'react-hot-toast';
 import { api, RunFilters, RunSummary } from '../api/client';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
+import { InlineError } from '../components/ErrorBoundary';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
+import { parseError } from '../utils/errorMessages';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -22,7 +24,7 @@ export default function Dashboard() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,7 +55,13 @@ export default function Dashboard() {
       setRuns(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load runs');
+      const parsed = parseError(err, 'loading-runs');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
     } finally {
       setLoading(false);
     }
@@ -137,8 +145,8 @@ export default function Dashboard() {
       setSelectedIds(new Set());
       await loadRuns();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      toast.error(`Failed to delete runs: ${errorMsg}`);
+      const parsed = parseError(err, 'deleting-run');
+      toast.error(parsed.message);
     } finally {
       setIsDeleting(false);
     }
@@ -272,8 +280,17 @@ export default function Dashboard() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-8 py-3 px-4 border border-border-secondary text-[14px] text-muted">
-          {error}
+        <div className="mb-8">
+          <InlineError
+            title={error.title}
+            message={error.message}
+            action={error.action}
+            onRetry={error.recoverable ? () => {
+              setError(null);
+              loadRuns();
+            } : undefined}
+            onDismiss={() => setError(null)}
+          />
         </div>
       )}
 

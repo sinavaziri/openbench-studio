@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 from typing import AsyncGenerator, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.auth import get_current_user, get_optional_user
@@ -16,6 +16,7 @@ from app.core.errors import (
     NotFoundError,
     ServerError,
     ValidationError,
+    ExternalServiceError,
 )
 from app.db.models import Run, RunCreate, RunStatus, RunSummary, RunTagsUpdate, User
 from app.runner.artifacts import list_artifacts, read_command, read_log_tail, read_summary
@@ -276,7 +277,7 @@ async def stream_run_events(run_id: str, request: Request):
     """
     run = await run_store.get_run(run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     async def event_generator() -> AsyncGenerator[str, None]:
         stdout_pos = 0
@@ -444,7 +445,7 @@ async def get_eval_data(
     user_id = current_user.user_id if current_user else None
     run = await run_store.get_run(run_id, user_id=user_id)
     if run is None:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise RunNotFoundError(run_id)
     
     # Build the full path and validate
     artifact_dir = RUNS_DIR / run_id
@@ -455,16 +456,30 @@ async def get_eval_data(
         file_path = file_path.resolve()
         artifact_dir = artifact_dir.resolve()
         if not str(file_path).startswith(str(artifact_dir)):
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise ForbiddenError(
+                message="Access to this file is not allowed",
+                detail="The requested path is outside the run directory."
+            )
+    except ForbiddenError:
+        raise
     except Exception:
-        raise HTTPException(status_code=403, detail="Invalid path")
+        raise ForbiddenError(
+            message="Invalid file path",
+            detail="The requested path could not be resolved."
+        )
     
     if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="Eval file not found")
+        raise NotFoundError(
+            resource="Eval file",
+            detail=f"File '{eval_path}' not found. The benchmark may not have completed yet."
+        )
     
     # Only allow .eval files
     if not file_path.suffix == '.eval':
-        raise HTTPException(status_code=400, detail="Only .eval files can be parsed")
+        raise ValidationError(
+            message="Only .eval files can be parsed in the browser",
+            detail="Download the file to view it with another tool."
+        )
     
     try:
         # Import inspect_ai to read the eval log
@@ -582,15 +597,15 @@ async def get_eval_data(
     except ImportError as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500, 
-            detail=f"inspect_ai not available: {str(e)}"
+        raise ExternalServiceError(
+            service="inspect_ai",
+            detail=f"The inspect_ai package is required to view evaluation results but is not installed: {str(e)}"
         )
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to parse eval file: {str(e)}"
+        raise ServerError(
+            message="Failed to parse evaluation results",
+            detail=f"The evaluation file could not be parsed: {str(e)}. The file may be corrupted or in an unexpected format."
         )
 

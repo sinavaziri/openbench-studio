@@ -5,6 +5,8 @@ import { api, ApiKeyPublic, Benchmark, RunConfig, ModelProvider } from '../api/c
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import BenchmarkCatalog from '../components/BenchmarkCatalog';
+import { InlineError } from '../components/ErrorBoundary';
+import { parseError } from '../utils/errorMessages';
 
 interface LocationState {
   prefill?: RunConfig;
@@ -23,7 +25,7 @@ export default function NewRun() {
   const [apiKeys, setApiKeys] = useState<ApiKeyPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
   // Form state
   const [selectedBenchmark, setSelectedBenchmark] = useState<Benchmark | undefined>(
@@ -115,7 +117,13 @@ export default function NewRun() {
       setApiKeys(keysData);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      const parsed = parseError(err, 'loading-benchmarks');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
     } finally {
       setLoading(false);
     }
@@ -128,9 +136,10 @@ export default function NewRun() {
     try {
       const response = await api.getAvailableModels();
       setModelProviders(response.providers);
-    } catch (error) {
-      console.error('Failed to fetch available models:', error);
-      setModelsError(error instanceof Error ? error.message : 'Failed to load models');
+    } catch (err) {
+      console.error('Failed to fetch available models:', err);
+      const parsed = parseError(err, 'loading-models');
+      setModelsError(parsed.message);
       setModelProviders([]);
     } finally {
       setModelsLoading(false);
@@ -176,9 +185,14 @@ export default function NewRun() {
       });
       navigate(`/runs/${result.run_id}`);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to start run';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const parsed = parseError(err, 'creating-run');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
+      toast.error(parsed.title);
       setSubmitting(false);
     }
   };
@@ -227,8 +241,17 @@ export default function NewRun() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-8 py-3 px-4 bg-error-bg border border-error-border text-[14px] text-error">
-          {error}
+        <div className="mb-8">
+          <InlineError
+            title={error.title}
+            message={error.message}
+            action={error.action}
+            onRetry={error.recoverable ? () => {
+              setError(null);
+              loadData();
+            } : undefined}
+            onDismiss={() => setError(null)}
+          />
         </div>
       )}
 

@@ -8,6 +8,8 @@ import LogTail from '../components/LogTail';
 import MetricCards from '../components/MetricCards';
 import BreakdownChart from '../components/BreakdownChart';
 import ArtifactViewer from '../components/ArtifactViewer';
+import { ErrorState } from '../components/ErrorBoundary';
+import { parseError } from '../utils/errorMessages';
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
@@ -15,7 +17,7 @@ export default function RunDetail() {
   const { isAuthenticated } = useAuth();
   const [run, setRun] = useState<RunDetailType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; action?: string; recoverable: boolean } | null>(null);
   
   // Live log lines (appended via SSE)
   const [stdoutLines, setStdoutLines] = useState<string[]>([]);
@@ -55,7 +57,13 @@ export default function RunDetail() {
         setStderrLines(data.stderr_tail.split('\n'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load run');
+      const parsed = parseError(err, 'loading-run');
+      setError({
+        title: parsed.title,
+        message: parsed.message,
+        action: parsed.action,
+        recoverable: parsed.recoverable,
+      });
     } finally {
       setLoading(false);
     }
@@ -181,9 +189,8 @@ export default function RunDetail() {
       toast('Canceling run...', { icon: '⏳' });
       loadRun();
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to cancel run';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const parsed = parseError(err, 'canceling-run');
+      toast.error(parsed.message);
     }
   };
 
@@ -195,9 +202,8 @@ export default function RunDetail() {
       toast.success('Run deleted');
       navigate('/');
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to delete run';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const parsed = parseError(err, 'deleting-run');
+      toast.error(parsed.message);
       setDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -220,9 +226,8 @@ export default function RunDetail() {
       setNewTag('');
       toast.success(`Tag added: ${newTag.trim()}`);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to add tag';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const parsed = parseError(err);
+      toast.error(parsed.message);
     } finally {
       setSavingTags(false);
     }
@@ -238,9 +243,8 @@ export default function RunDetail() {
       setRun({ ...run, tags: updatedTags });
       toast.success(`Tag removed: ${tagToRemove}`);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to remove tag';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const parsed = parseError(err);
+      toast.error(parsed.message);
     } finally {
       setSavingTags(false);
     }
@@ -263,14 +267,32 @@ export default function RunDetail() {
   }
 
   if (error || !run) {
+    const errorInfo = error || {
+      title: 'Run Not Found',
+      message: 'The requested benchmark run could not be found.',
+      action: 'It may have been deleted or the link may be incorrect.',
+      recoverable: true,
+    };
+    
     return (
       <Layout>
-        <div className="text-center py-16">
-          <p className="text-[15px] text-muted mb-4">{error || 'Run not found'}</p>
-          <Link to="/history" className="text-[14px] text-foreground hover:opacity-70 transition-opacity">
+        <ErrorState
+          title={errorInfo.title}
+          message={errorInfo.message}
+          action={errorInfo.action}
+          onRetry={errorInfo.recoverable ? () => {
+            setError(null);
+            setLoading(true);
+            loadRun();
+          } : undefined}
+        >
+          <Link 
+            to="/history" 
+            className="mt-4 inline-block text-[14px] text-muted-foreground hover:text-foreground transition-colors"
+          >
             ← Back to History
           </Link>
-        </div>
+        </ErrorState>
       </Layout>
     );
   }
