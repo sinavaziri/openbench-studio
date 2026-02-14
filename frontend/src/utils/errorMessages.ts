@@ -33,6 +33,9 @@ export type ErrorContext =
   | 'deleting-run'
   | 'canceling-run'
   | 'duplicating-run'
+  | 'scheduling-run'
+  | 'canceling-scheduled-run'
+  | 'updating-scheduled-run'
   | 'loading-benchmarks'
   | 'loading-models'
   | 'saving-api-key'
@@ -425,6 +428,24 @@ const CONTEXT_DEFAULTS: Record<ErrorContext, Omit<ParsedError, 'originalError'>>
     title: 'Failed to Duplicate Run',
     message: 'The run couldn\'t be duplicated.',
     action: 'Check your configuration and try again.',
+    recoverable: true,
+  },
+  'scheduling-run': {
+    title: 'Failed to Schedule Run',
+    message: 'The run couldn\'t be scheduled.',
+    action: 'Check that the scheduled time is in the future.',
+    recoverable: true,
+  },
+  'canceling-scheduled-run': {
+    title: 'Failed to Cancel Scheduled Run',
+    message: 'The scheduled run couldn\'t be canceled.',
+    action: 'It may have already started. Check the runs list.',
+    recoverable: true,
+  },
+  'updating-scheduled-run': {
+    title: 'Failed to Update Schedule',
+    message: 'The scheduled time couldn\'t be updated.',
+    action: 'Check that the new time is in the future.',
     recoverable: true,
   },
   'loading-analytics': {

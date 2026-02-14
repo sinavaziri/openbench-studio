@@ -170,6 +170,9 @@ export default function Settings() {
   const [showProviderSelector, setShowProviderSelector] = useState(false);
   const [newProvider, setNewProvider] = useState<{ id: string; displayName: string; envVar: string; color: string; customEnvVar?: string } | null>(null);
   const [versionInfo, setVersionInfo] = useState<{ web_ui: string; openbench: string | null; openbench_available: boolean } | null>(null);
+  const [costStats, setCostStats] = useState<CostsResponse | null>(null);
+  const [costThreshold, setCostThreshold] = useState<CostThreshold | null>(null);
+  const [costPeriod, setCostPeriod] = useState<number>(30);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -178,6 +181,26 @@ export default function Settings() {
     }
     loadData();
   }, [isAuthenticated, navigate]);
+
+  // Load cost data when period changes
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadCostData();
+    }
+  }, [isAuthenticated, costPeriod]);
+
+  const loadCostData = async () => {
+    try {
+      const [costs, thresholds] = await Promise.all([
+        api.getCostStats(costPeriod).catch(() => null),
+        api.getCostThresholds(costPeriod).catch(() => null),
+      ]);
+      if (costs) setCostStats(costs);
+      if (thresholds) setCostThreshold(thresholds);
+    } catch {
+      // Ignore cost loading errors
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -382,6 +405,101 @@ export default function Settings() {
                 View OpenBench on GitHub →
               </a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cost Tracking Section */}
+      {costStats && (
+        <div className="mb-8 sm:mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
+              API Cost Summary
+            </p>
+            <select
+              value={costPeriod}
+              onChange={(e) => setCostPeriod(Number(e.target.value))}
+              className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[12px] focus:border-border-secondary focus:outline-none transition-colors cursor-pointer"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+              <option value={365}>Last year</option>
+            </select>
+          </div>
+          
+          <div className="bg-background-secondary border border-border p-4 sm:p-6">
+            {/* Cost Warning */}
+            {costThreshold && (costThreshold.is_warning || costThreshold.is_critical) && (
+              <div className={`mb-4 p-3 border ${costThreshold.is_critical ? 'bg-error-bg border-error-border' : 'bg-warning-bg border-warning-border'}`}>
+                <p className={`text-[13px] ${costThreshold.is_critical ? 'text-error' : 'text-warning-foreground'}`}>
+                  ⚠️ {costThreshold.is_critical ? 'Critical' : 'Warning'}: You've reached {costThreshold.percentage_of_warning.toFixed(0)}% of your warning threshold (${costThreshold.warning_threshold})
+                </p>
+              </div>
+            )}
+            
+            {/* Cost Summary Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 mb-6">
+              <div>
+                <p className="text-[11px] sm:text-[12px] text-muted-foreground mb-1">Total Cost</p>
+                <p className="text-[18px] sm:text-[22px] text-foreground font-light tabular-nums">
+                  ${costStats.total_cost < 1 ? costStats.total_cost.toFixed(3) : costStats.total_cost.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] sm:text-[12px] text-muted-foreground mb-1">Total Tokens</p>
+                <p className="text-[18px] sm:text-[22px] text-foreground font-light tabular-nums">
+                  {costStats.total_tokens.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] sm:text-[12px] text-muted-foreground mb-1">Input Tokens</p>
+                <p className="text-[14px] sm:text-[16px] text-muted-foreground tabular-nums">
+                  {costStats.total_input_tokens.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] sm:text-[12px] text-muted-foreground mb-1">Output Tokens</p>
+                <p className="text-[14px] sm:text-[16px] text-muted-foreground tabular-nums">
+                  {costStats.total_output_tokens.toLocaleString()}
+                </p>
+              </div>
+            </div>
+            
+            {/* Cost by Model */}
+            {costStats.by_model.length > 0 && (
+              <div className="border-t border-border pt-4">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-3">
+                  Cost by Model
+                </p>
+                <div className="space-y-2">
+                  {costStats.by_model.slice(0, 5).map((model) => (
+                    <div key={model.model} className="flex items-center justify-between">
+                      <span className="text-[13px] text-foreground truncate mr-4">{model.model}</span>
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <span className="text-[12px] text-muted-foreground tabular-nums">
+                          {model.total_tokens.toLocaleString()} tokens
+                        </span>
+                        <span className="text-[13px] text-foreground tabular-nums font-medium">
+                          ${model.total_cost < 0.01 ? model.total_cost.toFixed(4) : model.total_cost.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {costStats.by_model.length > 5 && (
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    +{costStats.by_model.length - 5} more models
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {costStats.run_count === 0 && (
+              <p className="text-[13px] text-muted-foreground text-center py-4">
+                No cost data available for this period. Costs are tracked for completed benchmark runs.
+              </p>
+            )}
           </div>
         </div>
       )}

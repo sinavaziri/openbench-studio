@@ -19,11 +19,30 @@ from app.db.models import ApiKeyProvider
 from app.services.api_keys import api_key_service
 
 
+class ModelCapabilities(BaseModel):
+    """Model capability flags for compatibility matching."""
+    vision: bool = False              # Can process images
+    code_execution: bool = False      # Has code interpreter
+    function_calling: bool = False    # Supports function/tool calling
+    json_mode: bool = False           # Supports structured JSON output
+    streaming: bool = True            # Supports streaming responses
+
+
+class ModelPricing(BaseModel):
+    """Pricing information for cost estimation."""
+    input_per_1m: Optional[float] = None   # $ per 1M input tokens
+    output_per_1m: Optional[float] = None  # $ per 1M output tokens
+    currency: str = "USD"
+
+
 class ModelInfo(BaseModel):
     """Information about a single model."""
     id: str
     name: str
     description: Optional[str] = None
+    context_length: Optional[int] = None  # Max tokens (input + output)
+    capabilities: ModelCapabilities = ModelCapabilities()
+    pricing: Optional[ModelPricing] = None  # Future: cost estimation
 
 
 class ModelProvider(BaseModel):

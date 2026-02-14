@@ -14,11 +14,162 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 import httpx
 
-from app.db.models import Benchmark
+from app.db.models import Benchmark, BenchmarkRequirements
+
+
+# =============================================================================
+# Benchmark Requirements Registry
+# =============================================================================
+# Maps benchmark names to their required model capabilities.
+# Benchmarks not listed here default to no special requirements.
+
+BENCHMARK_REQUIREMENTS: Dict[str, BenchmarkRequirements] = {
+    # -------------------------------------------------------------------------
+    # Vision Benchmarks - require image processing capability
+    # -------------------------------------------------------------------------
+    "mmmu": BenchmarkRequirements(vision=True),
+    "mathvista": BenchmarkRequirements(vision=True),
+    "docvqa": BenchmarkRequirements(vision=True),
+    "chartqa": BenchmarkRequirements(vision=True),
+    "ai2d": BenchmarkRequirements(vision=True),
+    "realworldqa": BenchmarkRequirements(vision=True),
+    "ocrbench": BenchmarkRequirements(vision=True),
+    "textvqa": BenchmarkRequirements(vision=True),
+    "vqav2": BenchmarkRequirements(vision=True),
+    "infographicvqa": BenchmarkRequirements(vision=True),
+    "scienceqa": BenchmarkRequirements(vision=True),  # Some questions have images
+    "mmbench": BenchmarkRequirements(vision=True),
+    "seed-bench": BenchmarkRequirements(vision=True),
+    "pope": BenchmarkRequirements(vision=True),
+    "hallucination-bench": BenchmarkRequirements(vision=True),
+    
+    # -------------------------------------------------------------------------
+    # Function Calling Benchmarks - require tool use capability
+    # -------------------------------------------------------------------------
+    "bfcl": BenchmarkRequirements(function_calling=True),
+    "nexus": BenchmarkRequirements(function_calling=True),
+    "tau-bench": BenchmarkRequirements(function_calling=True),
+    "gorilla-apibench": BenchmarkRequirements(function_calling=True),
+    "toolbench": BenchmarkRequirements(function_calling=True),
+    "api-bank": BenchmarkRequirements(function_calling=True),
+    "toolalpaca": BenchmarkRequirements(function_calling=True),
+    
+    # -------------------------------------------------------------------------
+    # Code Execution Benchmarks - require code interpreter
+    # -------------------------------------------------------------------------
+    "swe-bench": BenchmarkRequirements(code_execution=True),
+    "swe-bench-lite": BenchmarkRequirements(code_execution=True),
+    "swe-bench-verified": BenchmarkRequirements(code_execution=True),
+    "ml-bench": BenchmarkRequirements(code_execution=True),
+    "ds-1000": BenchmarkRequirements(code_execution=True),
+    
+    # -------------------------------------------------------------------------
+    # Long Context Benchmarks - require large context windows
+    # -------------------------------------------------------------------------
+    "ruler": BenchmarkRequirements(min_context_length=128000),
+    "needle": BenchmarkRequirements(min_context_length=128000),
+    "needle-in-haystack": BenchmarkRequirements(min_context_length=128000),
+    "longbench": BenchmarkRequirements(min_context_length=32000),
+    "scrolls": BenchmarkRequirements(min_context_length=32000),
+    "infinitebench": BenchmarkRequirements(min_context_length=128000),
+    "loogle": BenchmarkRequirements(min_context_length=32000),
+    "lost-in-the-middle": BenchmarkRequirements(min_context_length=32000),
+    "zeroscrolls": BenchmarkRequirements(min_context_length=32000),
+    "l-eval": BenchmarkRequirements(min_context_length=32000),
+    
+    # -------------------------------------------------------------------------
+    # Standard Benchmarks - no special requirements
+    # -------------------------------------------------------------------------
+    "mmlu": BenchmarkRequirements(),
+    "gsm8k": BenchmarkRequirements(),
+    "hellaswag": BenchmarkRequirements(),
+    "arc": BenchmarkRequirements(),
+    "arc-easy": BenchmarkRequirements(),
+    "arc-challenge": BenchmarkRequirements(),
+    "truthfulqa": BenchmarkRequirements(),
+    "winogrande": BenchmarkRequirements(),
+    "drop": BenchmarkRequirements(),
+    "bigbench": BenchmarkRequirements(),
+    "humaneval": BenchmarkRequirements(),  # Just generation, no execution
+    "mbpp": BenchmarkRequirements(),       # Just generation, no execution
+    "math": BenchmarkRequirements(),
+    "gpqa": BenchmarkRequirements(),
+    "boolq": BenchmarkRequirements(),
+    "piqa": BenchmarkRequirements(),
+    "siqa": BenchmarkRequirements(),
+    "openbookqa": BenchmarkRequirements(),
+    "squad": BenchmarkRequirements(),
+    "squad2": BenchmarkRequirements(),
+    "race": BenchmarkRequirements(),
+    "triviaqa": BenchmarkRequirements(),
+    "naturalqa": BenchmarkRequirements(),
+    "coqa": BenchmarkRequirements(),
+    "quac": BenchmarkRequirements(),
+    "hotpotqa": BenchmarkRequirements(),
+    "commonsenseqa": BenchmarkRequirements(),
+    "socialiqa": BenchmarkRequirements(),
+    "cosmosqa": BenchmarkRequirements(),
+    "anli": BenchmarkRequirements(),
+    "mnli": BenchmarkRequirements(),
+    "snli": BenchmarkRequirements(),
+    "wnli": BenchmarkRequirements(),
+    "rte": BenchmarkRequirements(),
+    "medqa": BenchmarkRequirements(),
+    "pubmedqa": BenchmarkRequirements(),
+    "agieval": BenchmarkRequirements(),
+    "ifeval": BenchmarkRequirements(),
+    "mt-bench": BenchmarkRequirements(),
+    "alpaca-eval": BenchmarkRequirements(),
+    "arena-hard": BenchmarkRequirements(),
+}
+
+
+def get_benchmark_requirements(benchmark_name: str) -> BenchmarkRequirements:
+    """
+    Get requirements for a benchmark.
+    
+    Args:
+        benchmark_name: The benchmark name/identifier
+        
+    Returns:
+        BenchmarkRequirements object (defaults to no requirements if unknown)
+    """
+    # Normalize name (lowercase, strip whitespace)
+    name = benchmark_name.lower().strip()
+    
+    # Try exact match
+    if name in BENCHMARK_REQUIREMENTS:
+        return BENCHMARK_REQUIREMENTS[name]
+    
+    # Try without hyphens/underscores
+    normalized = name.replace("-", "").replace("_", "")
+    for key, reqs in BENCHMARK_REQUIREMENTS.items():
+        if key.replace("-", "").replace("_", "") == normalized:
+            return reqs
+    
+    # Apply heuristics for unknown benchmarks
+    reqs = BenchmarkRequirements()
+    
+    # Vision heuristics
+    vision_keywords = ["vision", "visual", "image", "vqa", "ocr", "chart", "doc", "diagram"]
+    if any(kw in name for kw in vision_keywords):
+        reqs = BenchmarkRequirements(vision=True)
+    
+    # Function calling heuristics
+    tool_keywords = ["tool", "function", "api", "agent"]
+    if any(kw in name for kw in tool_keywords):
+        reqs = BenchmarkRequirements(function_calling=True)
+    
+    # Long context heuristics
+    long_keywords = ["long", "needle", "ruler", "infinite", "scroll"]
+    if any(kw in name for kw in long_keywords):
+        reqs = BenchmarkRequirements(min_context_length=32000)
+    
+    return reqs
 
 # Try to import OpenBench library for direct API access
 try:
@@ -379,6 +530,8 @@ class BenchmarkCatalog:
                 tags=["knowledge", "reasoning", "multi-subject"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("mmlu"),
+                sample_count=14042,
             ),
             Benchmark(
                 name="humaneval",
@@ -390,6 +543,8 @@ class BenchmarkCatalog:
                 tags=["coding", "python", "generation"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("humaneval"),
+                sample_count=164,
             ),
             Benchmark(
                 name="gsm8k",
@@ -401,6 +556,8 @@ class BenchmarkCatalog:
                 tags=["math", "reasoning", "word-problems"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("gsm8k"),
+                sample_count=8500,
             ),
             Benchmark(
                 name="hellaswag",
@@ -412,6 +569,8 @@ class BenchmarkCatalog:
                 tags=["commonsense", "reasoning"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("hellaswag"),
+                sample_count=10042,
             ),
             Benchmark(
                 name="arc",
@@ -423,6 +582,8 @@ class BenchmarkCatalog:
                 tags=["science", "reasoning", "multiple-choice"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("arc"),
+                sample_count=7787,
             ),
             Benchmark(
                 name="truthfulqa",
@@ -434,6 +595,8 @@ class BenchmarkCatalog:
                 tags=["truthfulness", "safety", "qa"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("truthfulqa"),
+                sample_count=817,
             ),
             Benchmark(
                 name="winogrande",
@@ -445,6 +608,8 @@ class BenchmarkCatalog:
                 tags=["commonsense", "reasoning", "coreference"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("winogrande"),
+                sample_count=44000,
             ),
             Benchmark(
                 name="mbpp",
@@ -456,6 +621,8 @@ class BenchmarkCatalog:
                 tags=["coding", "python", "generation"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("mbpp"),
+                sample_count=974,
             ),
             Benchmark(
                 name="drop",
@@ -466,6 +633,8 @@ class BenchmarkCatalog:
                 tags=["reading", "reasoning", "math"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("drop"),
+                sample_count=96567,
             ),
             Benchmark(
                 name="bigbench",
@@ -477,33 +646,48 @@ class BenchmarkCatalog:
                 tags=["diverse", "reasoning", "comprehensive"],
                 featured=True,
                 source="builtin",
+                requirements=get_benchmark_requirements("bigbench"),
             ),
             # Additional benchmarks for pagination demo
-            Benchmark(name="boolq", category="reading", description_short="Boolean questions from natural queries", tags=["qa", "reading"], featured=False, source="builtin"),
-            Benchmark(name="piqa", category="commonsense", description_short="Physical commonsense reasoning", tags=["commonsense"], featured=False, source="builtin"),
-            Benchmark(name="siqa", category="commonsense", description_short="Social interaction QA", tags=["commonsense", "social"], featured=False, source="builtin"),
-            Benchmark(name="openbookqa", category="science", description_short="Elementary science questions", tags=["science", "qa"], featured=False, source="builtin"),
-            Benchmark(name="squad", category="reading", description_short="Stanford Question Answering Dataset", tags=["reading", "qa"], featured=False, source="builtin"),
-            Benchmark(name="race", category="reading", description_short="Reading comprehension from exams", tags=["reading"], featured=False, source="builtin"),
-            Benchmark(name="math", category="math", description_short="Competition mathematics problems", tags=["math", "reasoning"], featured=False, source="builtin"),
-            Benchmark(name="gpqa", category="science", description_short="Graduate-level science questions", tags=["science", "expert"], featured=False, source="builtin"),
-            Benchmark(name="mmmu", category="diverse", description_short="Multimodal understanding benchmark", tags=["multimodal", "diverse"], featured=False, source="builtin"),
-            Benchmark(name="mathvista", category="math", description_short="Mathematical reasoning in visual contexts", tags=["math", "multimodal"], featured=False, source="builtin"),
-            Benchmark(name="medqa", category="science", description_short="Medical exam questions", tags=["medical", "science"], featured=False, source="builtin"),
-            Benchmark(name="pubmedqa", category="science", description_short="Biomedical question answering", tags=["medical", "science"], featured=False, source="builtin"),
-            Benchmark(name="triviaqa", category="knowledge", description_short="Trivia questions with evidence", tags=["knowledge", "qa"], featured=False, source="builtin"),
-            Benchmark(name="naturalqa", category="knowledge", description_short="Questions from Google searches", tags=["knowledge", "qa"], featured=False, source="builtin"),
-            Benchmark(name="coqa", category="reading", description_short="Conversational question answering", tags=["reading", "conversation"], featured=False, source="builtin"),
-            Benchmark(name="quac", category="reading", description_short="Question answering in context", tags=["reading", "conversation"], featured=False, source="builtin"),
-            Benchmark(name="hotpotqa", category="reading", description_short="Multi-hop question answering", tags=["reading", "reasoning"], featured=False, source="builtin"),
-            Benchmark(name="commonsenseqa", category="commonsense", description_short="Commonsense question answering", tags=["commonsense", "qa"], featured=False, source="builtin"),
-            Benchmark(name="socialiqa", category="commonsense", description_short="Social situations reasoning", tags=["commonsense", "social"], featured=False, source="builtin"),
-            Benchmark(name="cosmosqa", category="commonsense", description_short="Commonsense reading comprehension", tags=["commonsense", "reading"], featured=False, source="builtin"),
-            Benchmark(name="anli", category="reading", description_short="Adversarial NLI", tags=["reading", "nli"], featured=False, source="builtin"),
-            Benchmark(name="mnli", category="reading", description_short="Multi-genre NLI", tags=["reading", "nli"], featured=False, source="builtin"),
-            Benchmark(name="snli", category="reading", description_short="Stanford NLI", tags=["reading", "nli"], featured=False, source="builtin"),
-            Benchmark(name="wnli", category="reading", description_short="Winograd NLI", tags=["reading", "nli"], featured=False, source="builtin"),
-            Benchmark(name="rte", category="reading", description_short="Recognizing textual entailment", tags=["reading", "nli"], featured=False, source="builtin"),
+            Benchmark(name="boolq", category="reading", description_short="Boolean questions from natural queries", tags=["qa", "reading"], featured=False, source="builtin", requirements=get_benchmark_requirements("boolq")),
+            Benchmark(name="piqa", category="commonsense", description_short="Physical commonsense reasoning", tags=["commonsense"], featured=False, source="builtin", requirements=get_benchmark_requirements("piqa")),
+            Benchmark(name="siqa", category="commonsense", description_short="Social interaction QA", tags=["commonsense", "social"], featured=False, source="builtin", requirements=get_benchmark_requirements("siqa")),
+            Benchmark(name="openbookqa", category="science", description_short="Elementary science questions", tags=["science", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("openbookqa")),
+            Benchmark(name="squad", category="reading", description_short="Stanford Question Answering Dataset", tags=["reading", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("squad")),
+            Benchmark(name="race", category="reading", description_short="Reading comprehension from exams", tags=["reading"], featured=False, source="builtin", requirements=get_benchmark_requirements("race")),
+            Benchmark(name="math", category="math", description_short="Competition mathematics problems", tags=["math", "reasoning"], featured=False, source="builtin", requirements=get_benchmark_requirements("math")),
+            Benchmark(name="gpqa", category="science", description_short="Graduate-level science questions", tags=["science", "expert"], featured=False, source="builtin", requirements=get_benchmark_requirements("gpqa")),
+            Benchmark(name="mmmu", category="diverse", description_short="Multimodal understanding benchmark", tags=["multimodal", "diverse", "vision"], featured=False, source="builtin", requirements=get_benchmark_requirements("mmmu")),
+            Benchmark(name="mathvista", category="math", description_short="Mathematical reasoning in visual contexts", tags=["math", "multimodal", "vision"], featured=False, source="builtin", requirements=get_benchmark_requirements("mathvista")),
+            Benchmark(name="medqa", category="science", description_short="Medical exam questions", tags=["medical", "science"], featured=False, source="builtin", requirements=get_benchmark_requirements("medqa")),
+            Benchmark(name="pubmedqa", category="science", description_short="Biomedical question answering", tags=["medical", "science"], featured=False, source="builtin", requirements=get_benchmark_requirements("pubmedqa")),
+            Benchmark(name="triviaqa", category="knowledge", description_short="Trivia questions with evidence", tags=["knowledge", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("triviaqa")),
+            Benchmark(name="naturalqa", category="knowledge", description_short="Questions from Google searches", tags=["knowledge", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("naturalqa")),
+            Benchmark(name="coqa", category="reading", description_short="Conversational question answering", tags=["reading", "conversation"], featured=False, source="builtin", requirements=get_benchmark_requirements("coqa")),
+            Benchmark(name="quac", category="reading", description_short="Question answering in context", tags=["reading", "conversation"], featured=False, source="builtin", requirements=get_benchmark_requirements("quac")),
+            Benchmark(name="hotpotqa", category="reading", description_short="Multi-hop question answering", tags=["reading", "reasoning"], featured=False, source="builtin", requirements=get_benchmark_requirements("hotpotqa")),
+            Benchmark(name="commonsenseqa", category="commonsense", description_short="Commonsense question answering", tags=["commonsense", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("commonsenseqa")),
+            Benchmark(name="socialiqa", category="commonsense", description_short="Social situations reasoning", tags=["commonsense", "social"], featured=False, source="builtin", requirements=get_benchmark_requirements("socialiqa")),
+            Benchmark(name="cosmosqa", category="commonsense", description_short="Commonsense reading comprehension", tags=["commonsense", "reading"], featured=False, source="builtin", requirements=get_benchmark_requirements("cosmosqa")),
+            Benchmark(name="anli", category="reading", description_short="Adversarial NLI", tags=["reading", "nli"], featured=False, source="builtin", requirements=get_benchmark_requirements("anli")),
+            Benchmark(name="mnli", category="reading", description_short="Multi-genre NLI", tags=["reading", "nli"], featured=False, source="builtin", requirements=get_benchmark_requirements("mnli")),
+            Benchmark(name="snli", category="reading", description_short="Stanford NLI", tags=["reading", "nli"], featured=False, source="builtin", requirements=get_benchmark_requirements("snli")),
+            Benchmark(name="wnli", category="reading", description_short="Winograd NLI", tags=["reading", "nli"], featured=False, source="builtin", requirements=get_benchmark_requirements("wnli")),
+            Benchmark(name="rte", category="reading", description_short="Recognizing textual entailment", tags=["reading", "nli"], featured=False, source="builtin", requirements=get_benchmark_requirements("rte")),
+            # Vision benchmarks
+            Benchmark(name="docvqa", category="vision", description_short="Document visual question answering", tags=["vision", "document", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("docvqa")),
+            Benchmark(name="chartqa", category="vision", description_short="Chart understanding and QA", tags=["vision", "charts", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("chartqa")),
+            Benchmark(name="textvqa", category="vision", description_short="Text reading in images", tags=["vision", "ocr", "qa"], featured=False, source="builtin", requirements=get_benchmark_requirements("textvqa")),
+            Benchmark(name="ocrbench", category="vision", description_short="OCR benchmark for vision models", tags=["vision", "ocr"], featured=False, source="builtin", requirements=get_benchmark_requirements("ocrbench")),
+            # Function calling benchmarks
+            Benchmark(name="bfcl", category="function_calling", description_short="Berkeley Function Calling Leaderboard", tags=["function_calling", "tools"], featured=False, source="builtin", requirements=get_benchmark_requirements("bfcl")),
+            Benchmark(name="nexus", category="function_calling", description_short="Tool use evaluation benchmark", tags=["function_calling", "tools", "agent"], featured=False, source="builtin", requirements=get_benchmark_requirements("nexus")),
+            # Long context benchmarks  
+            Benchmark(name="ruler", category="long_context", description_short="Long context retrieval and understanding", tags=["long_context", "retrieval"], featured=False, source="builtin", requirements=get_benchmark_requirements("ruler")),
+            Benchmark(name="needle", category="long_context", description_short="Needle in a haystack retrieval test", tags=["long_context", "retrieval"], featured=False, source="builtin", requirements=get_benchmark_requirements("needle")),
+            Benchmark(name="longbench", category="long_context", description_short="Long document understanding", tags=["long_context", "reading"], featured=False, source="builtin", requirements=get_benchmark_requirements("longbench")),
+            # Code execution benchmarks
+            Benchmark(name="swe-bench", category="coding", description_short="Software engineering benchmark with real GitHub issues", tags=["coding", "software_engineering", "code_execution"], featured=False, source="builtin", requirements=get_benchmark_requirements("swe-bench")),
         ]
     
     async def get_benchmarks(self, force_refresh: bool = False) -> list[Benchmark]:

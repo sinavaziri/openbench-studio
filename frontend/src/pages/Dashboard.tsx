@@ -597,21 +597,48 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-6">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
-              Runs
-            </p>
+            {/* Tab Navigation */}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setActiveTab('runs')}
+                className={`text-[11px] uppercase tracking-[0.1em] transition-colors pb-1 ${
+                  activeTab === 'runs'
+                    ? 'text-foreground border-b border-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Runs
+              </button>
+              <button
+                onClick={() => setActiveTab('scheduled')}
+                className={`text-[11px] uppercase tracking-[0.1em] transition-colors pb-1 flex items-center gap-2 ${
+                  activeTab === 'scheduled'
+                    ? 'text-foreground border-b border-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Scheduled
+                {scheduledRuns.length > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] bg-accent text-accent-foreground rounded-sm">
+                    {scheduledRuns.length}
+                  </span>
+                )}
+              </button>
+            </div>
             
-            {/* Selection Mode Toggle */}
-            <button
-              onClick={handleToggleSelectionMode}
-              className={`text-[13px] transition-colors ${
-                selectionMode 
-                  ? 'text-foreground' 
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {selectionMode ? '✕ Cancel' : 'Select'}
-            </button>
+            {/* Selection Mode Toggle - only show on runs tab */}
+            {activeTab === 'runs' && (
+              <button
+                onClick={handleToggleSelectionMode}
+                className={`text-[13px] transition-colors ${
+                  selectionMode 
+                    ? 'text-foreground' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {selectionMode ? '✕ Cancel' : 'Select'}
+              </button>
+            )}
           </div>
           
           <div className="flex items-center gap-4">
@@ -900,17 +927,48 @@ export default function Dashboard() {
           </div>
         )}
         
-        <RunTable 
-          runs={runs} 
-          loading={loading}
-          selectable={selectionMode}
-          selectedIds={selectedIds}
-          onSelectionChange={setSelectedIds}
-          focusedIndex={focusedIndex}
-          onFocusChange={setFocusedIndex}
-          onSelectAll={handleSelectAll}
-          searchQuery={searchQuery}
-        />
+        {/* Runs Tab Content */}
+        {activeTab === 'runs' && (
+          <RunTable 
+            runs={runs} 
+            loading={loading}
+            selectable={selectionMode}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+            focusedIndex={focusedIndex}
+            onFocusChange={setFocusedIndex}
+            onSelectAll={handleSelectAll}
+            searchQuery={searchQuery}
+          />
+        )}
+        
+        {/* Scheduled Tab Content */}
+        {activeTab === 'scheduled' && (
+          <ScheduledRunsTable 
+            runs={scheduledRuns}
+            loading={loadingScheduled}
+            onCancel={async (runId) => {
+              try {
+                await api.cancelScheduledRun(runId);
+                toast.success('Scheduled run canceled');
+                loadScheduledRuns();
+              } catch (err) {
+                const parsed = parseError(err, 'canceling-scheduled-run');
+                toast.error(parsed.message);
+              }
+            }}
+            onUpdate={async (runId, scheduledFor) => {
+              try {
+                await api.updateScheduledRun(runId, { scheduled_for: scheduledFor });
+                toast.success('Schedule updated');
+                loadScheduledRuns();
+              } catch (err) {
+                const parsed = parseError(err, 'updating-scheduled-run');
+                toast.error(parsed.message);
+              }
+            }}
+          />
+        )}
       </div>
 
       {/* Duplicate Run Modal */}

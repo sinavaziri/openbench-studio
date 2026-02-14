@@ -323,6 +323,10 @@ class Run(BaseModel):
     notes: Optional[str] = Field(None, description="User notes for the run")
     template_id: Optional[str] = Field(None, description="ID of template used to create this run")
     template_name: Optional[str] = Field(None, description="Name of template used (preserved even if template deleted)")
+    input_tokens: Optional[int] = Field(None, description="Number of input/prompt tokens used")
+    output_tokens: Optional[int] = Field(None, description="Number of output/completion tokens used")
+    total_tokens: Optional[int] = Field(None, description="Total tokens used")
+    estimated_cost: Optional[float] = Field(None, description="Estimated cost in USD")
 
 
 class RunCreate(BaseModel):
@@ -424,6 +428,8 @@ class RunSummary(BaseModel):
     tags: list[str] = Field(default_factory=list, description="User-defined tags")
     notes: Optional[str] = Field(None, description="User notes for the run")
     template_name: Optional[str] = Field(None, description="Name of template used (if created from template)")
+    total_tokens: Optional[int] = Field(None, description="Total tokens used")
+    estimated_cost: Optional[float] = Field(None, description="Estimated cost in USD")
 
 
 class RunListResponse(BaseModel):
@@ -497,6 +503,26 @@ class RunNotesUpdate(BaseModel):
 # Benchmark Models
 # =============================================================================
 
+class BenchmarkRequirements(BaseModel):
+    """Required model capabilities to run this benchmark."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "vision": True,
+                "code_execution": False,
+                "function_calling": False,
+                "min_context_length": None
+            }
+        }
+    )
+    
+    vision: bool = Field(default=False, description="Requires image processing capability")
+    code_execution: bool = Field(default=False, description="Requires code interpreter/execution")
+    function_calling: bool = Field(default=False, description="Requires function/tool calling support")
+    min_context_length: Optional[int] = Field(None, description="Minimum context window required")
+
+
 class Benchmark(BaseModel):
     """A benchmark definition."""
     
@@ -509,7 +535,10 @@ class Benchmark(BaseModel):
                 "description": "MMLU tests models on 57 subjects across STEM, humanities, social sciences, and more.",
                 "tags": ["knowledge", "multiple-choice", "academic"],
                 "featured": True,
-                "source": "builtin"
+                "source": "builtin",
+                "requirements": {"vision": False, "code_execution": False, "function_calling": False, "min_context_length": None},
+                "estimated_tokens": 2000,
+                "sample_count": 14042
             }
         }
     )
@@ -521,6 +550,10 @@ class Benchmark(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Categorization tags")
     featured: bool = Field(default=False, description="Whether this is a featured benchmark")
     source: Optional[str] = Field(None, description="Source: 'builtin', 'plugin', 'github', etc.")
+    # NEW FIELDS for capability matching
+    requirements: BenchmarkRequirements = Field(default_factory=BenchmarkRequirements, description="Model capability requirements")
+    estimated_tokens: Optional[int] = Field(None, description="Average tokens per sample")
+    sample_count: Optional[int] = Field(None, description="Total samples in benchmark")
 
 
 # =============================================================================
