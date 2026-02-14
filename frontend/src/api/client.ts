@@ -1,6 +1,39 @@
 const API_BASE = '/api';
 const TOKEN_KEY = 'openbench_token';
 
+// Request timeout in milliseconds
+const DEFAULT_TIMEOUT = 30000;
+
+/**
+ * Custom API Error class with additional context
+ */
+export class ApiError extends Error {
+  public readonly statusCode: number;
+  public readonly detail: string;
+  public readonly isNetworkError: boolean;
+  public readonly isAuthError: boolean;
+  public readonly recoverable: boolean;
+
+  constructor(
+    message: string,
+    statusCode: number = 0,
+    detail?: string,
+    options?: { isNetworkError?: boolean; isAuthError?: boolean }
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.statusCode = statusCode;
+    this.detail = detail || message;
+    this.isNetworkError = options?.isNetworkError ?? false;
+    this.isAuthError = options?.isAuthError ?? (statusCode === 401);
+    
+    // Determine if error is recoverable (can retry)
+    this.recoverable = this.isNetworkError || 
+      statusCode === 429 || // Rate limited
+      statusCode >= 500;    // Server errors
+  }
+}
+
 // =============================================================================
 // Auth Types
 // =============================================================================
@@ -258,7 +291,8 @@ class ApiClient {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {},
-    requireAuth: boolean = false
+    requireAuth: boolean = false,
+    timeout: number = DEFAULT_TIMEOUT
   ): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -269,27 +303,113 @@ class ApiClient {
     if (this.token) {
       headers['Authorization'] = `Bearer ${this.token}`;
     } else if (requireAuth) {
-      throw new Error('Authentication required');
+      throw new ApiError(
+        'Please sign in to continue.',
+        401,
+        'Authentication required',
+        { isAuthError: true }
+      );
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let errorDetail = '';
+        let errorBody: Record<string, unknown> = {};
+        
+        try {
+          errorBody = await response.json();
+          errorDetail = (errorBody.detail as string) || '';
+        } catch {
+          // Response wasn't JSON
+        }
+        
+        // Map status codes to user-friendly messages
+        const statusMessages: Record<number, string> = {
+          400: errorDetail || 'The request was invalid. Please check your input.',
+          401: 'Your session has expired. Please sign in again.',
+          403: "You don't have permission to perform this action.",
+          404: errorDetail || 'The requested resource was not found.',
+          409: errorDetail || 'This action conflicts with existing data.',
+          422: errorDetail || 'The provided data is invalid.',
+          429: 'Too many requests. Please wait a moment and try again.',
+          500: 'Something went wrong on our end. Please try again.',
+          502: 'The server is temporarily unavailable.',
+          503: 'The service is temporarily unavailable. Please try again later.',
+          504: 'The request timed out. Please try again.',
+        };
+        
+        const userMessage = statusMessages[response.status] || 
+          errorDetail || 
+          `Request failed (${response.status})`;
+        
+        // Handle auth errors specially - clear token
+        if (response.status === 401) {
+          this.setToken(null);
+        }
+        
+        throw new ApiError(
+          userMessage,
+          response.status,
+          errorDetail,
+          { isAuthError: response.status === 401 }
+        );
+      }
+
+      // Handle empty responses
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        return {} as T;
+      }
+
+      return response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
       
-      // Handle auth errors specially
-      if (response.status === 401) {
-        this.setToken(null); // Clear invalid token
-        throw new Error(error.detail || 'Authentication required');
+      // Already an ApiError, re-throw
+      if (error instanceof ApiError) {
+        throw error;
       }
       
-      throw new Error(error.detail || `Request failed: ${response.status}`);
+      // Handle abort/timeout
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new ApiError(
+          'The request timed out. Please check your connection and try again.',
+          0,
+          'Request timeout',
+          { isNetworkError: true }
+        );
+      }
+      
+      // Handle network errors
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        throw new ApiError(
+          'Unable to connect to the server. Please check your internet connection.',
+          0,
+          'Network error',
+          { isNetworkError: true }
+        );
+      }
+      
+      // Unknown error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new ApiError(
+        `An unexpected error occurred: ${errorMessage}`,
+        0,
+        errorMessage
+      );
     }
-
-    return response.json();
   }
 
   // ===========================================================================

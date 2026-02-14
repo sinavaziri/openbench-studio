@@ -8,8 +8,6 @@ import LogTail from '../components/LogTail';
 import MetricCards from '../components/MetricCards';
 import BreakdownChart from '../components/BreakdownChart';
 import ArtifactViewer from '../components/ArtifactViewer';
-import ExportDropdown from '../components/ExportDropdown';
-import { exportRunDetailToCSV, exportRunDetailToJSON } from '../utils/export';
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>();
@@ -248,30 +246,17 @@ export default function RunDetail() {
     }
   };
 
-  // Export handlers
-  const handleExportCSV = () => {
-    if (!run) return;
-    exportRunDetailToCSV(run);
-    toast.success('Exported run to CSV');
-  };
-
-  const handleExportJSON = () => {
-    if (!run) return;
-    exportRunDetailToJSON(run);
-    toast.success('Exported run to JSON');
-  };
-
   if (loading) {
     return (
       <Layout>
         <div className="space-y-8">
-          <div className="h-8 w-64 bg-[#1a1a1a] rounded animate-pulse" />
+          <div className="h-8 w-64 bg-border rounded animate-pulse" />
           <div className="grid grid-cols-4 gap-8">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-20 bg-[#1a1a1a] rounded animate-pulse" />
+              <div key={i} className="h-20 bg-border rounded animate-pulse" />
             ))}
           </div>
-          <div className="h-64 bg-[#1a1a1a] rounded animate-pulse" />
+          <div className="h-64 bg-border rounded animate-pulse" />
         </div>
       </Layout>
     );
@@ -281,8 +266,8 @@ export default function RunDetail() {
     return (
       <Layout>
         <div className="text-center py-16">
-          <p className="text-[15px] text-[#888] mb-4">{error || 'Run not found'}</p>
-          <Link to="/history" className="text-[14px] text-white hover:opacity-70 transition-opacity">
+          <p className="text-[15px] text-muted mb-4">{error || 'Run not found'}</p>
+          <Link to="/history" className="text-[14px] text-foreground hover:opacity-70 transition-opacity">
             ← Back to History
           </Link>
         </div>
@@ -310,28 +295,28 @@ export default function RunDetail() {
       <div className="mb-12">
         <Link 
           to="/history"
-          className="text-[13px] text-[#666] hover:text-white transition-colors mb-4 inline-block"
+          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors mb-4 inline-block"
         >
           ← Back
         </Link>
         <div className="flex items-center gap-4 mb-2">
-          <h1 className="text-[28px] text-white tracking-tight">
+          <h1 className="text-[28px] text-foreground tracking-tight">
             {run.benchmark}
           </h1>
-          <span className="text-[13px] text-[#888] flex items-center">
+          <span className="text-[13px] text-muted flex items-center">
             {run.status === 'running' && (
-              <span className="w-1.5 h-1.5 rounded-full bg-white mr-2 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-foreground mr-2 animate-pulse" />
             )}
             {statusLabels[run.status]}
           </span>
           {isSSEConnected && (
-            <span className="text-[11px] text-[#4a4] flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-[#4a4]" />
+            <span className="text-[11px] text-success flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-success" />
               Live
             </span>
           )}
         </div>
-        <p className="text-[15px] text-[#666]">
+        <p className="text-[15px] text-muted-foreground">
           {run.model}
         </p>
       </div>
@@ -340,19 +325,19 @@ export default function RunDetail() {
       {progress && isActive && (
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[12px] text-[#666]">Progress</span>
-            <span className="text-[12px] text-[#888]">
+            <span className="text-[12px] text-muted-foreground">Progress</span>
+            <span className="text-[12px] text-muted">
               {progress.current} / {progress.total} ({progress.percentage}%)
             </span>
           </div>
-          <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden">
+          <div className="h-1 bg-border rounded-full overflow-hidden">
             <div 
-              className="h-full bg-white transition-all duration-300"
+              className="h-full bg-foreground transition-all duration-300"
               style={{ width: `${progress.percentage}%` }}
             />
           </div>
           {progress.message && (
-            <p className="text-[12px] text-[#555] mt-2 truncate">
+            <p className="text-[12px] text-muted-foreground mt-2 truncate">
               {progress.message}
             </p>
           )}
@@ -362,34 +347,34 @@ export default function RunDetail() {
       {/* Info Grid */}
       <div className="grid grid-cols-[280px_1fr] gap-16 mb-12">
         <div>
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
             Details
           </p>
           <div className="space-y-4">
             <div>
-              <p className="text-[12px] text-[#666] mb-1">Run ID</p>
-              <p className="text-[14px] text-white font-mono">{run.run_id.slice(0, 8)}</p>
+              <p className="text-[12px] text-muted-foreground mb-1">Run ID</p>
+              <p className="text-[14px] text-foreground font-mono">{run.run_id.slice(0, 8)}</p>
             </div>
             <div>
-              <p className="text-[12px] text-[#666] mb-1">Created</p>
-              <p className="text-[14px] text-white">{new Date(run.created_at).toLocaleString()}</p>
+              <p className="text-[12px] text-muted-foreground mb-1">Created</p>
+              <p className="text-[14px] text-foreground">{new Date(run.created_at).toLocaleString()}</p>
             </div>
             {run.started_at && (
               <div>
-                <p className="text-[12px] text-[#666] mb-1">Started</p>
-                <p className="text-[14px] text-white">{new Date(run.started_at).toLocaleString()}</p>
+                <p className="text-[12px] text-muted-foreground mb-1">Started</p>
+                <p className="text-[14px] text-foreground">{new Date(run.started_at).toLocaleString()}</p>
               </div>
             )}
             {run.finished_at && (
               <div>
-                <p className="text-[12px] text-[#666] mb-1">Finished</p>
-                <p className="text-[14px] text-white">{new Date(run.finished_at).toLocaleString()}</p>
+                <p className="text-[12px] text-muted-foreground mb-1">Finished</p>
+                <p className="text-[14px] text-foreground">{new Date(run.finished_at).toLocaleString()}</p>
               </div>
             )}
             {run.exit_code !== null && run.exit_code !== undefined && (
               <div>
-                <p className="text-[12px] text-[#666] mb-1">Exit Code</p>
-                <p className={`text-[14px] font-mono ${run.exit_code === 0 ? 'text-white' : 'text-[#888]'}`}>
+                <p className="text-[12px] text-muted-foreground mb-1">Exit Code</p>
+                <p className={`text-[14px] font-mono ${run.exit_code === 0 ? 'text-foreground' : 'text-muted'}`}>
                   {run.exit_code}
                 </p>
               </div>
@@ -401,7 +386,7 @@ export default function RunDetail() {
             {isActive && (
               <button
                 onClick={handleCancel}
-                className="w-full px-4 py-2 text-[13px] text-[#888] border border-[#333] hover:border-[#666] hover:text-white transition-colors"
+                className="w-full px-4 py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel Run
               </button>
@@ -410,48 +395,37 @@ export default function RunDetail() {
             {run.config && !isActive && (
               <button
                 onClick={handleRunAgain}
-                className="w-full px-4 py-2 text-[13px] text-white bg-[#1a1a1a] border border-[#333] hover:bg-[#222] transition-colors"
+                className="w-full px-4 py-2 text-[13px] text-foreground bg-background-tertiary border border-border-secondary hover:bg-border transition-colors"
               >
                 Run Again →
               </button>
             )}
-
-            {/* Export Button */}
-            <div className="flex justify-center">
-              <ExportDropdown
-                label="Export Run"
-                options={[
-                  { label: 'Run Data', format: 'csv', onClick: handleExportCSV },
-                  { label: 'Run Data', format: 'json', onClick: handleExportJSON },
-                ]}
-              />
-            </div>
             
             {isAuthenticated && !isActive && (
               <>
                 {!showDeleteConfirm ? (
                   <button
                     onClick={() => setShowDeleteConfirm(true)}
-                    className="w-full px-4 py-2 text-[13px] text-[#666] border border-[#222] hover:border-[#c44] hover:text-[#c44] transition-colors"
+                    className="w-full px-4 py-2 text-[13px] text-muted-foreground border border-border hover:border-error hover:text-error transition-colors"
                   >
                     Delete Run
                   </button>
                 ) : (
-                  <div className="p-3 bg-[#1a0a0a] border border-[#3a1a1a]">
-                    <p className="text-[12px] text-[#c44] mb-3">
+                  <div className="p-3 bg-error-bg border border-error-border">
+                    <p className="text-[12px] text-error mb-3">
                       Delete this run and all artifacts?
                     </p>
                     <div className="flex gap-2">
                       <button
                         onClick={handleDelete}
                         disabled={deleting}
-                        className="flex-1 px-3 py-1.5 text-[12px] text-white bg-[#c44] hover:bg-[#d55] disabled:opacity-50 transition-colors"
+                        className="flex-1 px-3 py-1.5 text-[12px] text-accent-foreground bg-error hover:opacity-90 disabled:opacity-50 transition-colors"
                       >
                         {deleting ? 'Deleting...' : 'Delete'}
                       </button>
                       <button
                         onClick={() => setShowDeleteConfirm(false)}
-                        className="flex-1 px-3 py-1.5 text-[12px] text-[#888] border border-[#333] hover:text-white transition-colors"
+                        className="flex-1 px-3 py-1.5 text-[12px] text-muted border border-border-secondary hover:text-foreground transition-colors"
                       >
                         Cancel
                       </button>
@@ -467,7 +441,7 @@ export default function RunDetail() {
           {/* Configuration */}
           {run.config && Object.keys(run.config).length > 0 && (
             <div className="mb-8">
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Configuration
               </p>
               <div className="grid grid-cols-3 gap-4">
@@ -476,10 +450,10 @@ export default function RunDetail() {
                   .map(([key, value]) => (
                   value !== null && value !== undefined && (
                     <div key={key}>
-                      <p className="text-[12px] text-[#666] mb-1">
+                      <p className="text-[12px] text-muted-foreground mb-1">
                         {key.replace(/_/g, ' ')}
                       </p>
-                      <p className="text-[14px] text-white">{String(value)}</p>
+                      <p className="text-[14px] text-foreground">{String(value)}</p>
                     </div>
                   )
                 ))}
@@ -490,19 +464,19 @@ export default function RunDetail() {
           {/* Command - for reproducibility */}
           {run.command && (
             <div className="mb-8">
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Command
-                <span className="ml-2 text-[#444] normal-case tracking-normal">
+                <span className="ml-2 text-muted-foreground normal-case tracking-normal">
                   (for reproducibility)
                 </span>
               </p>
               <div className="relative group">
-                <pre className="px-4 py-3 bg-[#0a0a0a] border border-[#1a1a1a] text-[13px] text-[#888] font-mono overflow-x-auto">
+                <pre className="px-4 py-3 bg-background-secondary border border-border text-[13px] text-muted font-mono overflow-x-auto">
                   {run.command}
                 </pre>
                 <button
                   onClick={() => navigator.clipboard.writeText(run.command!)}
-                  className="absolute top-2 right-2 px-2 py-1 text-[11px] text-[#666] border border-[#222] bg-[#111] opacity-0 group-hover:opacity-100 hover:text-white hover:border-[#444] transition-all"
+                  className="absolute top-2 right-2 px-2 py-1 text-[11px] text-muted-foreground border border-border-secondary bg-background-tertiary opacity-0 group-hover:opacity-100 hover:text-foreground hover:border-muted-foreground transition-all"
                 >
                   Copy
                 </button>
@@ -513,10 +487,10 @@ export default function RunDetail() {
           {/* Error Message */}
           {run.error && (
             <div className="mb-8">
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Error
               </p>
-              <pre className="text-[13px] text-[#888] font-mono whitespace-pre-wrap break-words">
+              <pre className="text-[13px] text-muted font-mono whitespace-pre-wrap break-words">
                 {run.error}
               </pre>
             </div>
@@ -525,13 +499,13 @@ export default function RunDetail() {
           {/* Tags */}
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
                 Tags
               </p>
               {isAuthenticated && !editingTags && (
                 <button
                   onClick={() => setEditingTags(true)}
-                  className="text-[11px] text-[#555] hover:text-white transition-colors"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Edit
                 </button>
@@ -542,14 +516,14 @@ export default function RunDetail() {
               {(run.tags || []).map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#888] bg-[#111] border border-[#222]"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-muted bg-background-tertiary border border-border-secondary"
                 >
                   {tag}
                   {editingTags && (
                     <button
                       onClick={() => handleRemoveTag(tag)}
                       disabled={savingTags}
-                      className="text-[#666] hover:text-[#c44] transition-colors disabled:opacity-50"
+                      className="text-muted-foreground hover:text-error transition-colors disabled:opacity-50"
                     >
                       ×
                     </button>
@@ -558,7 +532,7 @@ export default function RunDetail() {
               ))}
               
               {(run.tags || []).length === 0 && !editingTags && (
-                <span className="text-[13px] text-[#444]">No tags</span>
+                <span className="text-[13px] text-muted-foreground">No tags</span>
               )}
               
               {editingTags && (
@@ -574,12 +548,12 @@ export default function RunDetail() {
                       }
                     }}
                     placeholder="Add tag..."
-                    className="px-2 py-1 w-24 text-[12px] bg-[#0a0a0a] border border-[#222] text-white placeholder-[#444] focus:border-[#444] focus:outline-none"
+                    className="px-2 py-1 w-24 text-[12px] bg-background-secondary border border-border-secondary text-foreground placeholder-muted-foreground focus:border-muted-foreground focus:outline-none"
                   />
                   <button
                     onClick={handleAddTag}
                     disabled={!newTag.trim() || savingTags}
-                    className="px-2 py-1 text-[11px] text-white bg-[#222] hover:bg-[#333] disabled:opacity-50 transition-colors"
+                    className="px-2 py-1 text-[11px] text-foreground bg-border-secondary hover:bg-muted-foreground disabled:opacity-50 transition-colors"
                   >
                     Add
                   </button>
@@ -588,7 +562,7 @@ export default function RunDetail() {
                       setEditingTags(false);
                       setNewTag('');
                     }}
-                    className="px-2 py-1 text-[11px] text-[#666] hover:text-white transition-colors"
+                    className="px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Done
                   </button>
@@ -602,7 +576,7 @@ export default function RunDetail() {
       {/* Results Section */}
       {run.status === 'completed' && (
         <div className="mb-12">
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-6">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-6">
             Results
           </p>
           
@@ -619,12 +593,12 @@ export default function RunDetail() {
               
               {run.summary.notes.length > 0 && (
                 <div className="mt-6">
-                  <p className="text-[11px] text-[#555] uppercase tracking-[0.1em] mb-3">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-3">
                     Notes
                   </p>
                   <ul className="space-y-1">
                     {run.summary.notes.map((note, i) => (
-                      <li key={i} className="text-[13px] text-[#666]">
+                      <li key={i} className="text-[13px] text-muted-foreground">
                         {note}
                       </li>
                     ))}
@@ -633,11 +607,11 @@ export default function RunDetail() {
               )}
             </div>
           ) : (
-            <div className="bg-[#0a0a0a] border border-[#1a1a1a] px-6 py-8 text-center">
-              <p className="text-[14px] text-[#555]">
+            <div className="bg-background-secondary border border-border px-6 py-8 text-center">
+              <p className="text-[14px] text-muted-foreground">
                 No structured summary available
               </p>
-              <p className="text-[12px] text-[#444] mt-2">
+              <p className="text-[12px] text-muted-foreground mt-2">
                 Check the logs below for raw output
               </p>
             </div>
@@ -648,7 +622,7 @@ export default function RunDetail() {
       {/* Logs */}
       <div className="space-y-8">
         <div>
-          <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
             Output
           </p>
           <LogTail
@@ -675,7 +649,7 @@ export default function RunDetail() {
       {run.artifacts && run.artifacts.length > 0 && (
         <div className="mt-12">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
               Artifacts ({run.artifacts.length})
             </p>
             {run.artifacts.length > 1 && (
@@ -691,7 +665,7 @@ export default function RunDetail() {
                     document.body.removeChild(link);
                   });
                 }}
-                className="px-3 py-1.5 text-[11px] text-[#888] border border-[#222] hover:border-[#444] hover:text-white transition-colors flex items-center gap-2"
+                className="px-3 py-1.5 text-[11px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -714,16 +688,16 @@ export default function RunDetail() {
                     {regularArtifacts.map((artifact) => (
                       <div
                         key={artifact}
-                        className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#333] hover:bg-[#111] transition-all group"
+                        className="flex items-center justify-between gap-3 px-4 py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
                       >
                         <button
                           onClick={() => setPreviewArtifact(artifact)}
                           className="flex items-center gap-3 flex-1 min-w-0 text-left"
                         >
-                          <svg className="w-4 h-4 text-[#666] group-hover:text-[#888] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
-                          <span className="text-[14px] text-[#888] group-hover:text-white font-mono transition-colors truncate">
+                          <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
                             {artifact}
                           </span>
                         </button>
@@ -738,7 +712,7 @@ export default function RunDetail() {
                               link.click();
                               document.body.removeChild(link);
                             }}
-                            className="p-1.5 text-[#555] hover:text-[#888] transition-colors"
+                            className="p-1.5 text-muted-foreground hover:text-muted transition-colors"
                             title="Download"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -754,7 +728,7 @@ export default function RunDetail() {
                 {/* Detailed evaluation logs */}
                 {detailedLogs.length > 0 && (
                   <div className="mt-6">
-                    <p className="text-[11px] text-[#555] uppercase tracking-[0.1em] mb-3">
+                    <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-3">
                       Detailed Logs
                     </p>
                     <div className="space-y-2">
@@ -766,15 +740,15 @@ export default function RunDetail() {
                             <Link
                               key={artifact}
                               to={`/runs/${id}/eval/${artifact}`}
-                              className="flex items-center gap-3 px-4 py-2 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#333] transition-colors group"
+                              className="flex items-center gap-3 px-4 py-2 bg-background-secondary border border-border hover:border-border-secondary transition-colors group"
                             >
-                              <svg className="w-4 h-4 text-[#666] group-hover:text-[#888]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                               </svg>
-                              <span className="text-[14px] text-[#888] group-hover:text-white font-mono transition-colors flex-1">
+                              <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors flex-1">
                                 {artifact.replace('logs/', '')}
                               </span>
-                              <span className="text-[11px] text-[#555] group-hover:text-[#666]">
+                              <span className="text-[11px] text-muted-foreground group-hover:text-muted">
                                 View Results →
                               </span>
                             </Link>
@@ -784,16 +758,16 @@ export default function RunDetail() {
                         return (
                           <div
                             key={artifact}
-                            className="flex items-center justify-between gap-3 px-4 py-2.5 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#333] hover:bg-[#111] transition-all group"
+                            className="flex items-center justify-between gap-3 px-4 py-2.5 bg-background-secondary border border-border hover:border-border-secondary hover:bg-background-tertiary transition-all group"
                           >
                             <button
                               onClick={() => setPreviewArtifact(artifact)}
                               className="flex items-center gap-3 flex-1 min-w-0 text-left"
                             >
-                              <svg className="w-4 h-4 text-[#666] group-hover:text-[#888] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4 h-4 text-muted-foreground group-hover:text-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
-                              <span className="text-[14px] text-[#888] group-hover:text-white font-mono transition-colors truncate">
+                              <span className="text-[14px] text-muted group-hover:text-foreground font-mono transition-colors truncate">
                                 {artifact.replace('logs/', '')}
                               </span>
                             </button>
@@ -808,7 +782,7 @@ export default function RunDetail() {
                                   link.click();
                                   document.body.removeChild(link);
                                 }}
-                                className="p-1.5 text-[#555] hover:text-[#888] transition-colors"
+                                className="p-1.5 text-muted-foreground hover:text-muted transition-colors"
                                 title="Download"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -820,7 +794,7 @@ export default function RunDetail() {
                         );
                       })}
                     </div>
-                    <p className="text-[12px] text-[#555] mt-3">
+                    <p className="text-[12px] text-muted-foreground mt-3">
                       💡 Tip: Click .eval files to view detailed results in the browser
                     </p>
                   </div>

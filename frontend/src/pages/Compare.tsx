@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { api, RunDetail } from '../api/client';
 import Layout from '../components/Layout';
+import { ErrorState } from '../components/ErrorBoundary';
 import ExportDropdown from '../components/ExportDropdown';
 import { exportComparisonToCSV, exportComparisonToJSON, ComparisonData } from '../utils/export';
 
@@ -61,30 +62,49 @@ export default function Compare() {
   const [searchParams] = useSearchParams();
   const [runs, setRuns] = useState<RunDetail[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string; recoverable: boolean } | null>(null);
 
   const runIds = searchParams.get('ids')?.split(',').filter(Boolean) || [];
 
-  useEffect(() => {
+  const loadRuns = async () => {
     if (runIds.length === 0) {
       setLoading(false);
       return;
     }
 
-    const loadRuns = async () => {
+    setLoading(true);
+    setError(null);
+    
+    const results: RunDetail[] = [];
+    const failed: string[] = [];
+    
+    // Load runs individually to handle partial failures
+    for (const id of runIds) {
       try {
-        const loadedRuns = await Promise.all(
-          runIds.map((id) => api.getRun(id))
-        );
-        setRuns(loadedRuns);
-        setError(null);
+        const run = await api.getRun(id);
+        results.push(run);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load runs');
-      } finally {
-        setLoading(false);
+        failed.push(id);
+        console.error(`Failed to load run ${id}:`, err);
       }
-    };
+    }
+    
+    setRuns(results);
+    
+    if (results.length === 0 && failed.length > 0) {
+      setError({
+        title: 'Could Not Load Runs',
+        message: `Unable to load any of the ${failed.length} selected runs. They may have been deleted.`,
+        recoverable: true,
+      });
+    } else if (failed.length > 0) {
+      toast.error(`${failed.length} run${failed.length > 1 ? 's' : ''} could not be loaded`, { duration: 5000 });
+    }
+    
+    setLoading(false);
+  };
 
+  useEffect(() => {
     loadRuns();
   }, [searchParams]);
 
@@ -226,15 +246,18 @@ export default function Compare() {
   if (error) {
     return (
       <Layout>
-        <div className="text-center py-16">
-          <p className="text-[15px] text-[#888] mb-4">{error}</p>
-          <Link
-            to="/history"
-            className="text-[14px] text-white hover:opacity-70 transition-opacity"
+        <ErrorState 
+          title={error.title}
+          message={error.message}
+          onRetry={error.recoverable ? loadRuns : undefined}
+        >
+          <Link 
+            to="/history" 
+            className="mt-4 inline-block text-[14px] text-white hover:opacity-70 transition-opacity"
           >
             ← Back to History
           </Link>
-        </div>
+        </ErrorState>
       </Layout>
     );
   }

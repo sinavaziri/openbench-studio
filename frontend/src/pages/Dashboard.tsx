@@ -1,20 +1,11 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, ApiError, RunFilters, RunSummary } from '../api/client';
-import { parseError, isNetworkError } from '../utils/errorMessages';
+import { api, RunFilters, RunSummary } from '../api/client';
 import Layout from '../components/Layout';
 import RunTable from '../components/RunTable';
-import ExportDropdown from '../components/ExportDropdown';
-import { InlineError } from '../components/ErrorBoundary';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useKeyboardShortcuts } from '../context/KeyboardShortcutsContext';
-import {
-  exportFilteredRunsToCSV,
-  exportFilteredRunsToJSON,
-  exportSelectedRunsToCSV,
-  exportSelectedRunsToJSON,
-} from '../utils/export';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -31,7 +22,7 @@ export default function Dashboard() {
   const [allTags, setAllTags] = useState<string[]>([]);
   const [allBenchmarks, setAllBenchmarks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ title: string; message: string; recoverable: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,23 +53,11 @@ export default function Dashboard() {
       setRuns(data);
       setError(null);
     } catch (err) {
-      const parsed = parseError(err);
-      // Only show error if this is the first load (not during polling)
-      if (loading) {
-        setError({
-          title: parsed.title,
-          message: parsed.action ? `${parsed.message} ${parsed.action}` : parsed.message,
-          recoverable: parsed.recoverable,
-        });
-      }
-      // For network errors during polling, fail silently to avoid spam
-      if (!isNetworkError(err) && !loading) {
-        console.error('[Dashboard] Failed to refresh runs:', err);
-      }
+      setError(err instanceof Error ? err.message : 'Failed to load runs');
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter, loading]);
+  }, [searchQuery, statusFilter, tagFilter, benchmarkFilter]);
 
   const loadTags = useCallback(async () => {
     try {
@@ -172,38 +151,6 @@ export default function Dashboard() {
     failed: runs.filter((r) => r.status === 'failed').length,
   };
 
-  // Export handlers
-  const currentFilters = {
-    status: statusFilter || undefined,
-    benchmark: benchmarkFilter || undefined,
-    tag: tagFilter || undefined,
-    search: searchQuery || undefined,
-  };
-
-  const hasFilters = statusFilter || benchmarkFilter || tagFilter || searchQuery;
-
-  const handleExportAllCSV = () => {
-    exportFilteredRunsToCSV(runs, { filters: currentFilters });
-    toast.success(`Exported ${runs.length} runs to CSV`);
-  };
-
-  const handleExportAllJSON = () => {
-    exportFilteredRunsToJSON(runs, { filters: currentFilters });
-    toast.success(`Exported ${runs.length} runs to JSON`);
-  };
-
-  const handleExportSelectedCSV = () => {
-    if (selectedIds.size === 0) return;
-    exportSelectedRunsToCSV(runs, selectedIds);
-    toast.success(`Exported ${selectedIds.size} selected runs to CSV`);
-  };
-
-  const handleExportSelectedJSON = () => {
-    if (selectedIds.size === 0) return;
-    exportSelectedRunsToJSON(runs, selectedIds);
-    toast.success(`Exported ${selectedIds.size} selected runs to JSON`);
-  };
-
   // Keyboard shortcuts
   
   // J - Move down in list
@@ -276,6 +223,10 @@ export default function Dashboard() {
   // Escape - Clear focus/selection
   useHotkeys('escape', () => {
     if (isHelpOpen) return;
+    if (document.activeElement === searchInputRef.current) {
+      searchInputRef.current?.blur();
+      return;
+    }
     if (focusedIndex >= 0) {
       setFocusedIndex(-1);
     } else if (selectionMode) {
@@ -290,38 +241,38 @@ export default function Dashboard() {
       <div className="mb-16">
         <div className="grid grid-cols-4 gap-8">
             <div>
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Total
               </p>
-              <p className="text-[32px] text-white tabular-nums">{stats.total}</p>
+              <p className="text-[32px] text-foreground tabular-nums">{stats.total}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Running
               </p>
-              <p className="text-[32px] text-white tabular-nums">
-                {stats.running > 0 && <span className="inline-block w-2 h-2 rounded-full bg-white mr-3 animate-pulse" />}
+              <p className="text-[32px] text-foreground tabular-nums">
+                {stats.running > 0 && <span className="inline-block w-2 h-2 rounded-full bg-foreground mr-3 animate-pulse" />}
                 {stats.running}
               </p>
             </div>
             <div>
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Completed
               </p>
-              <p className="text-[32px] text-white tabular-nums">{stats.completed}</p>
+              <p className="text-[32px] text-foreground tabular-nums">{stats.completed}</p>
             </div>
             <div>
-              <p className="text-[11px] text-[#666] uppercase tracking-[0.1em] mb-4">
+              <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Failed
               </p>
-              <p className="text-[32px] text-white tabular-nums">{stats.failed}</p>
+              <p className="text-[32px] text-foreground tabular-nums">{stats.failed}</p>
             </div>
           </div>
       </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mb-8 py-3 px-4 border border-[#333] text-[14px] text-[#888]">
+        <div className="mb-8 py-3 px-4 border border-border-secondary text-[14px] text-muted">
           {error}
         </div>
       )}
@@ -330,7 +281,7 @@ export default function Dashboard() {
       <div>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-6">
-            <p className="text-[11px] text-[#666] uppercase tracking-[0.1em]">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
               Runs
             </p>
             
@@ -339,8 +290,8 @@ export default function Dashboard() {
               onClick={handleToggleSelectionMode}
               className={`text-[13px] transition-colors ${
                 selectionMode 
-                  ? 'text-white' 
-                  : 'text-[#555] hover:text-white'
+                  ? 'text-foreground' 
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {selectionMode ? '✕ Cancel' : 'Select'}
@@ -356,8 +307,8 @@ export default function Dashboard() {
                   disabled={selectedIds.size === 0 || isDeleting}
                   className={`text-[13px] px-4 py-2 transition-all ${
                     selectedIds.size > 0 && !isDeleting
-                      ? 'text-white bg-red-900/50 hover:bg-red-900/70 border border-red-800'
-                      : 'text-[#555] bg-[#222] cursor-not-allowed border border-[#222]'
+                      ? 'text-foreground bg-error-bg hover:bg-error/10 border border-error-border'
+                      : 'text-muted-foreground bg-background-tertiary cursor-not-allowed border border-border'
                   }`}
                 >
                   {isDeleting ? 'Deleting...' : `Delete ${selectedIds.size > 0 ? `(${selectedIds.size})` : ''}`}
@@ -367,39 +318,18 @@ export default function Dashboard() {
                   disabled={selectedIds.size < 2}
                   className={`text-[13px] px-4 py-2 transition-all ${
                     selectedIds.size >= 2
-                      ? 'text-black bg-white hover:bg-[#e0e0e0]'
-                      : 'text-[#555] bg-[#222] cursor-not-allowed'
+                      ? 'text-accent-foreground bg-accent hover:opacity-90'
+                      : 'text-muted-foreground bg-background-tertiary cursor-not-allowed'
                   }`}
                 >
                   Compare {selectedIds.size > 0 && `(${selectedIds.size})`}
                 </button>
-
-                {/* Export selected runs */}
-                <ExportDropdown
-                  disabled={selectedIds.size === 0}
-                  label={`Export${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
-                  options={[
-                    { label: 'Selected Runs', format: 'csv', onClick: handleExportSelectedCSV },
-                    { label: 'Selected Runs', format: 'json', onClick: handleExportSelectedJSON },
-                  ]}
-                />
               </>
-            )}
-
-            {/* Export all/filtered runs (when not in selection mode) */}
-            {!selectionMode && runs.length > 0 && (
-              <ExportDropdown
-                label={hasFilters ? `Export (${runs.length})` : 'Export'}
-                options={[
-                  { label: hasFilters ? 'Filtered Runs' : 'All Runs', format: 'csv', onClick: handleExportAllCSV },
-                  { label: hasFilters ? 'Filtered Runs' : 'All Runs', format: 'json', onClick: handleExportAllJSON },
-                ]}
-              />
             )}
             
             <Link
               to="/"
-              className="text-[13px] text-white hover:opacity-70 transition-opacity"
+              className="text-[13px] text-foreground hover:opacity-70 transition-opacity"
             >
               New Run →
             </Link>
@@ -417,10 +347,10 @@ export default function Dashboard() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search benchmarks and models..."
-                className="w-full px-4 py-2.5 pl-10 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[14px] placeholder-[#444] focus:border-[#333] focus:outline-none transition-colors"
+                className="w-full px-4 py-2.5 pl-10 pr-8 bg-background-secondary border border-border text-foreground text-[14px] placeholder-muted-foreground focus:border-border-secondary focus:outline-none transition-colors"
               />
               <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#444]"
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -433,7 +363,7 @@ export default function Dashboard() {
                 />
               </svg>
               {/* Keyboard hint */}
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-[#333] pointer-events-none">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground/50 pointer-events-none font-mono">
                 /
               </span>
             </div>
@@ -443,13 +373,13 @@ export default function Dashboard() {
               onClick={() => setShowFilters(!showFilters)}
               className={`px-4 py-2.5 text-[13px] border transition-colors ${
                 showFilters || statusFilter || tagFilter || benchmarkFilter
-                  ? 'border-[#333] text-white bg-[#111]'
-                  : 'border-[#1a1a1a] text-[#666] hover:text-white hover:border-[#333]'
+                  ? 'border-border-secondary text-foreground bg-background-tertiary'
+                  : 'border-border text-muted-foreground hover:text-foreground hover:border-border-secondary'
               }`}
             >
               Filters
               {(statusFilter || tagFilter || benchmarkFilter) && (
-                <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-white text-black rounded-sm">
+                <span className="ml-2 px-1.5 py-0.5 text-[10px] bg-accent text-accent-foreground rounded-sm">
                   {[statusFilter, tagFilter, benchmarkFilter].filter(Boolean).length}
                 </span>
               )}
@@ -464,7 +394,7 @@ export default function Dashboard() {
                 <select
                   value={benchmarkFilter}
                   onChange={(e) => setBenchmarkFilter(e.target.value)}
-                  className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                  className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                     backgroundRepeat: 'no-repeat',
@@ -485,7 +415,7 @@ export default function Dashboard() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                   backgroundRepeat: 'no-repeat',
@@ -505,7 +435,7 @@ export default function Dashboard() {
                 <select
                   value={tagFilter}
                   onChange={(e) => setTagFilter(e.target.value)}
-                  className="px-3 py-2 bg-[#0a0a0a] border border-[#1a1a1a] text-white text-[13px] focus:border-[#333] focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
+                  className="px-3 py-2 bg-background-secondary border border-border text-foreground text-[13px] focus:border-border-secondary focus:outline-none transition-colors cursor-pointer appearance-none pr-8"
                   style={{
                     backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
                     backgroundRepeat: 'no-repeat',
@@ -531,7 +461,7 @@ export default function Dashboard() {
                     setTagFilter('');
                     setBenchmarkFilter('');
                   }}
-                  className="px-3 py-2 text-[12px] text-[#666] hover:text-white transition-colors"
+                  className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Clear all
                 </button>
@@ -542,7 +472,7 @@ export default function Dashboard() {
         
         {/* Selection Info */}
         {selectionMode && (
-          <div className="mb-4 py-3 px-4 bg-[#111] border border-[#1a1a1a] text-[13px] text-[#888]">
+          <div className="mb-4 py-3 px-4 bg-background-tertiary border border-border text-[13px] text-muted">
             {selectedIds.size === 0 
               ? 'Click runs to select them for comparison or deletion'
               : selectedIds.size === 1

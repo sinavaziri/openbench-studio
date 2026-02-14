@@ -2,41 +2,61 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, register } = useAuth();
+  const { resolvedTheme } = useTheme();
   
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ title: string; message: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     
+    // Validate required fields
     if (!email || !password) {
-      const errorMsg = 'Email and password are required';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      setError({
+        title: 'Missing Information',
+        message: 'Both email and password are required to continue.',
+      });
       return;
     }
     
-    if (isRegister && password !== confirmPassword) {
-      const errorMsg = 'Passwords do not match';
-      setError(errorMsg);
-      toast.error(errorMsg);
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError({
+        title: 'Invalid Email',
+        message: 'Please enter a valid email address.',
+      });
       return;
     }
     
-    if (isRegister && password.length < 8) {
-      const errorMsg = 'Password must be at least 8 characters';
-      setError(errorMsg);
-      toast.error(errorMsg);
-      return;
+    // Registration-specific validations
+    if (isRegister) {
+      if (password !== confirmPassword) {
+        setError({
+          title: 'Passwords Don\'t Match',
+          message: 'The password and confirmation password are different. Please re-enter them.',
+        });
+        return;
+      }
+      
+      if (password.length < 8) {
+        setError({
+          title: 'Password Too Short',
+          message: 'Password must be at least 8 characters for security.',
+        });
+        return;
+      }
     }
     
     setLoading(true);
@@ -51,51 +71,61 @@ export default function Login() {
       }
       navigate('/');
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Authentication failed';
-      setError(errorMsg);
-      toast.error(errorMsg);
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      setError({
+        title: isRegister ? 'Registration Failed' : 'Login Failed',
+        message: errorMessage,
+      });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const gridColor = resolvedTheme === 'dark' ? '#fff' : '#000';
+
   return (
-    <div className="min-h-screen bg-[#0c0c0c] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4">
       {/* Decorative grid background */}
       <div 
         className="fixed inset-0 opacity-[0.02]"
         style={{
           backgroundImage: `
-            linear-gradient(to right, #fff 1px, transparent 1px),
-            linear-gradient(to bottom, #fff 1px, transparent 1px)
+            linear-gradient(to right, ${gridColor} 1px, transparent 1px),
+            linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)
           `,
           backgroundSize: '60px 60px',
         }}
       />
       
+      {/* Theme toggle in corner */}
+      <div className="fixed top-6 right-6">
+        <ThemeToggle />
+      </div>
+      
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <Link to="/" className="block text-center mb-12">
-          <h1 className="text-2xl text-white tracking-tight">OpenBench</h1>
+          <h1 className="text-2xl text-foreground tracking-tight">OpenBench</h1>
         </Link>
         
         {/* Card */}
-        <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-8">
-          <h2 className="text-xl text-white mb-8 text-center">
+        <div className="bg-background-secondary border border-border p-8">
+          <h2 className="text-xl text-foreground mb-8 text-center">
             {isRegister ? 'Create Account' : 'Sign In'}
           </h2>
           
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email */}
             <div>
-              <label className="block text-[12px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[12px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-[#111] border border-[#222] text-white text-[15px] focus:border-[#444] focus:outline-none transition-colors"
+                className="w-full px-4 py-3 bg-background-tertiary border border-border-secondary text-foreground text-[15px] focus:border-muted-foreground focus:outline-none transition-colors"
                 placeholder="you@example.com"
                 autoComplete="email"
               />
@@ -103,14 +133,14 @@ export default function Login() {
             
             {/* Password */}
             <div>
-              <label className="block text-[12px] text-[#666] uppercase tracking-[0.1em] mb-2">
+              <label className="block text-[12px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                 Password
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-[#111] border border-[#222] text-white text-[15px] focus:border-[#444] focus:outline-none transition-colors"
+                className="w-full px-4 py-3 bg-background-tertiary border border-border-secondary text-foreground text-[15px] focus:border-muted-foreground focus:outline-none transition-colors"
                 placeholder="••••••••"
                 autoComplete={isRegister ? 'new-password' : 'current-password'}
               />
@@ -119,14 +149,14 @@ export default function Login() {
             {/* Confirm Password (register only) */}
             {isRegister && (
               <div>
-                <label className="block text-[12px] text-[#666] uppercase tracking-[0.1em] mb-2">
+                <label className="block text-[12px] text-muted-foreground uppercase tracking-[0.1em] mb-2">
                   Confirm Password
                 </label>
                 <input
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-[#111] border border-[#222] text-white text-[15px] focus:border-[#444] focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 bg-background-tertiary border border-border-secondary text-foreground text-[15px] focus:border-muted-foreground focus:outline-none transition-colors"
                   placeholder="••••••••"
                   autoComplete="new-password"
                 />
@@ -135,8 +165,9 @@ export default function Login() {
             
             {/* Error message */}
             {error && (
-              <div className="py-3 px-4 bg-[#1a0a0a] border border-[#3a1a1a] text-[14px] text-[#c44]">
-                {error}
+              <div className="py-3 px-4 bg-error-bg border border-error-border">
+                <p className="text-[14px] text-error font-medium mb-1">{error.title}</p>
+                <p className="text-[13px] text-muted-foreground">{error.message}</p>
               </div>
             )}
             
@@ -144,11 +175,11 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-white text-black text-[14px] font-medium hover:bg-[#e0e0e0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full py-3 bg-accent text-accent-foreground text-[14px] font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <span className="w-4 h-4 border-2 border-accent-foreground/20 border-t-accent-foreground rounded-full animate-spin" />
                   {isRegister ? 'Creating Account...' : 'Signing In...'}
                 </span>
               ) : (
@@ -165,12 +196,12 @@ export default function Login() {
                 setError(null);
                 setConfirmPassword('');
               }}
-              className="text-[14px] text-[#666] hover:text-white transition-colors"
+              className="text-[14px] text-muted-foreground hover:text-foreground transition-colors"
             >
               {isRegister ? (
-                <>Already have an account? <span className="text-white">Sign in</span></>
+                <>Already have an account? <span className="text-foreground">Sign in</span></>
               ) : (
-                <>Don&apos;t have an account? <span className="text-white">Create one</span></>
+                <>Don&apos;t have an account? <span className="text-foreground">Create one</span></>
               )}
             </button>
           </div>
@@ -180,7 +211,7 @@ export default function Login() {
         <div className="mt-8 text-center">
           <Link
             to="/"
-            className="text-[13px] text-[#555] hover:text-white transition-colors"
+            className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
             ← Back to Home
           </Link>
@@ -189,6 +220,3 @@ export default function Login() {
     </div>
   );
 }
-
-
-
