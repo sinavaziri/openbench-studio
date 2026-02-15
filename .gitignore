@@ -56,3 +56,4 @@ node_modules/
 
 # Frontend build output
 frontend/dist/
+.github/workflows/ci.yml

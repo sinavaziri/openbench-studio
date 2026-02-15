@@ -284,16 +284,31 @@ export interface RunLogLineEvent {
 export interface RunCompletedEvent {
   exit_code: number;
   finished_at: string | null;
+  retry_attempts?: number;
+  total_retry_delay?: number;
 }
 
 export interface RunFailedEvent {
   exit_code: number;
   error: string | null;
   finished_at: string | null;
+  retry_attempts?: number;
+  total_retry_delay?: number;
 }
 
 export interface RunCanceledEvent {
   finished_at: string | null;
+  retry_attempts?: number;
+  total_retry_delay?: number;
+}
+
+export interface RunRetryingEvent {
+  attempt: number;
+  max_retries: number;
+  delay: number;
+  error: string;
+  total_delay: number;
+  timestamp: string;
 }
 
 export interface UseRunWebSocketOptions {
@@ -305,6 +320,7 @@ export interface UseRunWebSocketOptions {
   onCompleted?: (event: RunCompletedEvent) => void;
   onFailed?: (event: RunFailedEvent) => void;
   onCanceled?: (event: RunCanceledEvent) => void;
+  onRetrying?: (event: RunRetryingEvent) => void;
   onError?: () => void;
 }
 
@@ -321,6 +337,7 @@ export function useRunWebSocket(options: UseRunWebSocketOptions) {
     onCompleted,
     onFailed,
     onCanceled,
+    onRetrying,
     onError,
   } = options;
 
@@ -345,9 +362,12 @@ export function useRunWebSocket(options: UseRunWebSocketOptions) {
         case 'canceled':
           onCanceled?.(message.data as RunCanceledEvent);
           break;
+        case 'retrying':
+          onRetrying?.(message.data as RunRetryingEvent);
+          break;
       }
     },
-    [onStatus, onLogLine, onProgress, onCompleted, onFailed, onCanceled]
+    [onStatus, onLogLine, onProgress, onCompleted, onFailed, onCanceled, onRetrying]
   );
 
   return useWebSocket({

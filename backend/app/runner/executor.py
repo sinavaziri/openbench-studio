@@ -62,12 +62,18 @@ class RunExecutor:
     - Graceful cancellation support
     - Comprehensive logging for debugging
     - Error detection and classification
+    - Automatic retry with exponential backoff on transient errors
     """
+
+    # Retry configuration for benchmark execution
+    MAX_RETRIES = 5
+    BASE_DELAY = 1.0  # 1s → 2s → 4s → 8s → 16s → 32s
 
     def __init__(self):
         self._running_processes: dict[str, subprocess.Popen] = {}
         self._canceled_runs: set[str] = set()
         self._mock_mode: Optional[bool] = None
+        self._retry_states: dict[str, RetryState] = {}
         
     def _check_bench_available(self) -> bool:
         """
@@ -88,6 +94,43 @@ class RunExecutor:
         """Return True if running in mock mode (no bench CLI)."""
         self._check_bench_available()
         return self._mock_mode
+
+    async def _broadcast_retry_status(
+        self,
+        run_id: str,
+        attempt: int,
+        max_retries: int,
+        delay: float,
+        error: str,
+        total_delay: float,
+    ) -> None:
+        """Broadcast retry status via WebSocket."""
+        try:
+            broadcast = _get_ws_broadcast()
+            await broadcast(run_id, "retrying", {
+                "attempt": attempt,
+                "max_retries": max_retries,
+                "delay": round(delay, 2),
+                "error": error,
+                "total_delay": round(total_delay, 2),
+                "timestamp": datetime.utcnow().isoformat(),
+            })
+        except Exception as e:
+            logger.debug(f"Run {run_id}: Retry broadcast failed: {e}")
+
+    def _get_retry_state(self, run_id: str, provider: Optional[str] = None) -> RetryState:
+        """Get or create retry state for a run."""
+        if run_id not in self._retry_states:
+            self._retry_states[run_id] = RetryState(
+                operation=f"benchmark_run:{run_id}",
+                provider=provider,
+                max_retries=self.MAX_RETRIES,
+            )
+        return self._retry_states[run_id]
+
+    def _clear_retry_state(self, run_id: str) -> None:
+        """Clear retry state for a run."""
+        self._retry_states.pop(run_id, None)
 
     def _create_artifact_dir(self, run_id: str) -> Path:
         """Create the artifact directory for a run."""
@@ -281,44 +324,97 @@ class RunExecutor:
             env.update(api_keys)
             logger.debug(f"Run {run.run_id}: Injecting {len(api_keys)} API keys")
         
+        # Extract provider from model for retry config
+        provider = run.config.model.split("/")[0] if "/" in run.config.model else None
+        retry_state = self._get_retry_state(run.run_id, provider)
+        total_delay = 0.0
+        
         try:
-            with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
-                # Start subprocess
-                logger.debug(f"Run {run.run_id}: Starting subprocess: {command_to_string(cmd)}")
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=stdout_file,
-                    stderr=stderr_file,
-                    cwd=str(artifact_dir),
-                    env=env,
-                )
-                
-                self._running_processes[run.run_id] = process
-                logger.info(f"Run {run.run_id}: Process started with PID {process.pid}")
-                
-                # Wait for completion in a thread to not block
-                loop = asyncio.get_event_loop()
-                exit_code = await loop.run_in_executor(None, process.wait)
-                
-                logger.info(f"Run {run.run_id}: Process exited with code {exit_code}")
-                
-                # Remove from running processes
-                self._running_processes.pop(run.run_id, None)
-                
-                # Check if this run was canceled
+            # Retry loop
+            for attempt in range(self.MAX_RETRIES + 1):
+                # Check if canceled before starting attempt
                 if run.run_id in self._canceled_runs:
                     self._canceled_runs.discard(run.run_id)
-                    logger.info(f"Run {run.run_id}: Was canceled, writing meta.json")
-                    
-                    meta = {
-                        "exit_code": exit_code,
-                        "finished_at": datetime.utcnow().isoformat(),
-                        "status": RunStatus.CANCELED.value,
-                        "mock_run": is_mock,
-                    }
-                    with open(artifact_dir / "meta.json", "w") as f:
-                        json.dump(meta, f, indent=2)
+                    logger.info(f"Run {run.run_id}: Canceled before attempt {attempt + 1}")
+                    await run_store.update_run(
+                        run.run_id,
+                        status=RunStatus.CANCELED,
+                        finished_at=datetime.utcnow(),
+                    )
+                    self._clear_retry_state(run.run_id)
                     return
+                
+                # Add delay for retry attempts
+                if attempt > 0:
+                    delay = calculate_delay(attempt - 1, RetryConfig(base_delay=self.BASE_DELAY))
+                    total_delay += delay
+                    
+                    logger.info(
+                        f"Run {run.run_id}: Retry attempt {attempt}/{self.MAX_RETRIES} "
+                        f"after {delay:.2f}s delay (total delay: {total_delay:.2f}s)"
+                    )
+                    
+                    # Broadcast retry status
+                    await self._broadcast_retry_status(
+                        run.run_id,
+                        attempt,
+                        self.MAX_RETRIES,
+                        delay,
+                        retry_state.last_error or "Unknown error",
+                        total_delay,
+                    )
+                    
+                    await asyncio.sleep(delay)
+                
+                # Use append mode for retries to preserve previous attempt logs
+                write_mode = "a" if attempt > 0 else "w"
+                
+                with open(stdout_path, write_mode) as stdout_file, open(stderr_path, write_mode) as stderr_file:
+                    # Add retry marker to logs
+                    if attempt > 0:
+                        retry_marker = f"\n\n=== RETRY ATTEMPT {attempt + 1}/{self.MAX_RETRIES + 1} ===\n\n"
+                        stdout_file.write(retry_marker)
+                        stderr_file.write(retry_marker)
+                    
+                    # Start subprocess
+                    logger.debug(f"Run {run.run_id}: Starting subprocess (attempt {attempt + 1}): {command_to_string(cmd)}")
+                    process = subprocess.Popen(
+                        cmd,
+                        stdout=stdout_file,
+                        stderr=stderr_file,
+                        cwd=str(artifact_dir),
+                        env=env,
+                    )
+                    
+                    self._running_processes[run.run_id] = process
+                    logger.info(f"Run {run.run_id}: Process started with PID {process.pid} (attempt {attempt + 1})")
+                    
+                    # Wait for completion in a thread to not block
+                    loop = asyncio.get_event_loop()
+                    exit_code = await loop.run_in_executor(None, process.wait)
+                    
+                    logger.info(f"Run {run.run_id}: Process exited with code {exit_code} (attempt {attempt + 1})")
+                    
+                    # Remove from running processes
+                    self._running_processes.pop(run.run_id, None)
+                    
+                    # Check if this run was canceled
+                    if run.run_id in self._canceled_runs:
+                        self._canceled_runs.discard(run.run_id)
+                        logger.info(f"Run {run.run_id}: Was canceled, writing meta.json")
+                        
+                        meta = {
+                            "exit_code": exit_code,
+                            "finished_at": datetime.utcnow().isoformat(),
+                            "status": RunStatus.CANCELED.value,
+                            "mock_run": is_mock,
+                            "retry_attempts": attempt,
+                            "total_retry_delay": round(total_delay, 2),
+                        }
+                        with open(artifact_dir / "meta.json", "w") as f:
+                            json.dump(meta, f, indent=2)
+                        self._clear_retry_state(run.run_id)
+                        return
                 
                 # Read output for failure detection
                 with open(stdout_path, "r") as f:
@@ -327,75 +423,106 @@ class RunExecutor:
                     stderr_content = f.read()
                 
                 # Detect failures from output content
-                detected_failure, error = self._detect_failure(stdout_content, stderr_content)
+                detected_failure, error, is_retryable = self._detect_failure(stdout_content, stderr_content)
                 
-                # Determine final status
+                # Determine status and whether to retry
                 if exit_code == 0 and not detected_failure:
+                    # Success!
                     status = RunStatus.COMPLETED
                     error = None
-                    logger.info(f"Run {run.run_id}: Completed successfully")
+                    if attempt > 0:
+                        logger.info(f"Run {run.run_id}: Completed successfully after {attempt} retries (total delay: {total_delay:.2f}s)")
+                    else:
+                        logger.info(f"Run {run.run_id}: Completed successfully")
+                    break
+                    
                 elif exit_code == 130:
-                    # SIGINT/SIGTERM - was canceled
+                    # SIGINT/SIGTERM - was canceled, don't retry
                     status = RunStatus.CANCELED
                     error = "Run was canceled"
                     logger.info(f"Run {run.run_id}: Canceled (exit code 130)")
-                elif exit_code == 0 and detected_failure:
-                    status = RunStatus.FAILED
-                    error = error or "Benchmark failed but returned exit code 0"
-                    logger.warning(f"Run {run.run_id}: Failed (detected from output): {error}")
+                    break
+                    
+                elif is_retryable and attempt < self.MAX_RETRIES:
+                    # Retryable error, will retry
+                    error_msg = error or f"Process exited with code {exit_code}"
+                    retry_state.start_retry(error_msg)
+                    logger.warning(
+                        f"Run {run.run_id}: Retryable error on attempt {attempt + 1}/{self.MAX_RETRIES + 1}: {error_msg}"
+                    )
+                    continue
+                    
                 else:
+                    # Non-retryable error or max retries reached
                     status = RunStatus.FAILED
                     if not error:
                         error = stderr_content[-1000:] if stderr_content else f"Process exited with code {exit_code}"
-                    logger.warning(f"Run {run.run_id}: Failed with exit code {exit_code}: {error}")
-                
-                # Parse and write summary.json
-                primary_metric_value: Optional[float] = None
-                primary_metric_name: Optional[str] = None
-                try:
-                    summary = parse_and_write_summary(artifact_dir)
-                    if summary.primary_metric:
-                        primary_metric_value = summary.primary_metric.value
-                        primary_metric_name = summary.primary_metric.name
-                        logger.info(f"Run {run.run_id}: Parsed primary metric {primary_metric_name}={primary_metric_value}")
-                except Exception as e:
-                    logger.warning(f"Run {run.run_id}: Summary parsing failed: {e}")
-                
-                # Write meta.json
-                meta = {
+                    
+                    if attempt > 0:
+                        error = f"{error} (failed after {attempt + 1} attempts)"
+                        logger.error(
+                            f"Run {run.run_id}: Failed after {attempt + 1} attempts "
+                            f"(total delay: {total_delay:.2f}s): {error}"
+                        )
+                    else:
+                        logger.warning(f"Run {run.run_id}: Failed with exit code {exit_code}: {error}")
+                    break
+            
+            # Parse and write summary.json
+            primary_metric_value: Optional[float] = None
+            primary_metric_name: Optional[str] = None
+            try:
+                summary = parse_and_write_summary(artifact_dir)
+                if summary.primary_metric:
+                    primary_metric_value = summary.primary_metric.value
+                    primary_metric_name = summary.primary_metric.name
+                    logger.info(f"Run {run.run_id}: Parsed primary metric {primary_metric_name}={primary_metric_value}")
+            except Exception as e:
+                logger.warning(f"Run {run.run_id}: Summary parsing failed: {e}")
+            
+            # Write meta.json with retry info
+            meta = {
+                "exit_code": exit_code,
+                "finished_at": datetime.utcnow().isoformat(),
+                "status": status.value,
+                "mock_run": is_mock,
+                "retry_attempts": retry_state.current_attempt,
+                "total_retry_delay": round(total_delay, 2),
+            }
+            with open(artifact_dir / "meta.json", "w") as f:
+                json.dump(meta, f, indent=2)
+            
+            await run_store.update_run(
+                run.run_id,
+                status=status,
+                finished_at=datetime.utcnow(),
+                exit_code=exit_code,
+                error=error,
+                primary_metric=primary_metric_value,
+                primary_metric_name=primary_metric_name,
+            )
+            
+            # Broadcast final status via WebSocket
+            try:
+                broadcast = _get_ws_broadcast()
+                event_type = status.value if hasattr(status, 'value') else str(status)
+                await broadcast(run.run_id, event_type, {
                     "exit_code": exit_code,
+                    "error": error,
                     "finished_at": datetime.utcnow().isoformat(),
-                    "status": status.value,
-                    "mock_run": is_mock,
-                }
-                with open(artifact_dir / "meta.json", "w") as f:
-                    json.dump(meta, f, indent=2)
-                
-                await run_store.update_run(
-                    run.run_id,
-                    status=status,
-                    finished_at=datetime.utcnow(),
-                    exit_code=exit_code,
-                    error=error,
-                    primary_metric=primary_metric_value,
-                    primary_metric_name=primary_metric_name,
-                )
-                
-                # Broadcast final status via WebSocket
-                try:
-                    broadcast = _get_ws_broadcast()
-                    event_type = status.value if hasattr(status, 'value') else str(status)
-                    await broadcast(run.run_id, event_type, {
-                        "exit_code": exit_code,
-                        "error": error,
-                        "finished_at": datetime.utcnow().isoformat(),
-                    })
-                except Exception as e:
-                    logger.debug(f"Run {run.run_id}: WebSocket broadcast failed: {e}")
+                    "retry_attempts": retry_state.current_attempt,
+                    "total_retry_delay": round(total_delay, 2),
+                })
+            except Exception as e:
+                logger.debug(f"Run {run.run_id}: WebSocket broadcast failed: {e}")
+            
+            # Clear retry state
+            self._clear_retry_state(run.run_id)
                 
         except FileNotFoundError as e:
             logger.error(f"Run {run.run_id}: Command not found: {e}")
             self._running_processes.pop(run.run_id, None)
+            self._clear_retry_state(run.run_id)
             await run_store.update_run(
                 run.run_id,
                 status=RunStatus.FAILED,
@@ -405,6 +532,7 @@ class RunExecutor:
         except Exception as e:
             logger.error(f"Run {run.run_id}: Unexpected error: {e}", exc_info=True)
             self._running_processes.pop(run.run_id, None)
+            self._clear_retry_state(run.run_id)
             await run_store.update_run(
                 run.run_id,
                 status=RunStatus.FAILED,

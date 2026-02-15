@@ -18,7 +18,8 @@ import {
   RunLogLineEvent,
   RunCompletedEvent,
   RunFailedEvent,
-  RunCanceledEvent 
+  RunCanceledEvent,
+  RunRetryingEvent,
 } from '../hooks/useWebSocket';
 import ConnectionStatus from '../components/ConnectionStatus';
 
@@ -55,6 +56,16 @@ export default function RunDetail() {
   const [stdoutLines, setStdoutLines] = useState<string[]>([]);
   const [stderrLines, setStderrLines] = useState<string[]>([]);
   const [progress, setProgress] = useState<RunProgressEvent | null>(null);
+  
+  // Retry state
+  const [retryInfo, setRetryInfo] = useState<{
+    isRetrying: boolean;
+    attempt: number;
+    maxRetries: number;
+    delay: number;
+    error: string;
+    totalDelay: number;
+  } | null>(null);
   
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -128,9 +139,13 @@ export default function RunDetail() {
   }, []);
 
   const handleWsCompleted = useCallback((event: RunCompletedEvent) => {
+    setRetryInfo(null); // Clear retry info on completion
     setRun((prev) => {
       if (prev) {
-        toast.success(`Run completed: ${prev.benchmark}`, {
+        const retryMsg = event.retry_attempts && event.retry_attempts > 0
+          ? ` (after ${event.retry_attempts} ${event.retry_attempts === 1 ? 'retry' : 'retries'})`
+          : '';
+        toast.success(`Run completed: ${prev.benchmark}${retryMsg}`, {
           icon: '✅',
           duration: 5000,
         });
@@ -145,9 +160,13 @@ export default function RunDetail() {
   }, []);
 
   const handleWsFailed = useCallback((event: RunFailedEvent) => {
+    setRetryInfo(null); // Clear retry info on failure
     setRun((prev) => {
       if (prev) {
-        toast.error(`Run failed: ${event.error || 'Unknown error'}`, {
+        const retryMsg = event.retry_attempts && event.retry_attempts > 0
+          ? ` (after ${event.retry_attempts + 1} attempts)`
+          : '';
+        toast.error(`Run failed: ${event.error || 'Unknown error'}${retryMsg}`, {
           duration: 6000,
         });
       }
@@ -162,6 +181,7 @@ export default function RunDetail() {
   }, []);
 
   const handleWsCanceled = useCallback((event: RunCanceledEvent) => {
+    setRetryInfo(null); // Clear retry info on cancel
     setRun((prev) => {
       if (prev) {
         toast('Run canceled', {
@@ -177,6 +197,22 @@ export default function RunDetail() {
     });
   }, []);
 
+  const handleWsRetrying = useCallback((event: RunRetryingEvent) => {
+    setRetryInfo({
+      isRetrying: true,
+      attempt: event.attempt,
+      maxRetries: event.max_retries,
+      delay: event.delay,
+      error: event.error,
+      totalDelay: event.total_delay,
+    });
+    
+    toast(`Retrying... (attempt ${event.attempt}/${event.max_retries})`, {
+      icon: '🔄',
+      duration: 3000,
+    });
+  }, []);
+
   // WebSocket connection for live updates (only for active runs)
   const isActiveRun = run?.status === 'running' || run?.status === 'queued';
   const { status: wsStatus, reconnectAttempts, isConnected } = useRunWebSocket({
@@ -188,6 +224,7 @@ export default function RunDetail() {
     onCompleted: handleWsCompleted,
     onFailed: handleWsFailed,
     onCanceled: handleWsCanceled,
+    onRetrying: handleWsRetrying,
     onError: () => {
       // WebSocket failed, will fall back to polling
     },
@@ -407,6 +444,11 @@ export default function RunDetail() {
   };
 
   const isActive = run.status === 'running' || run.status === 'queued';
+  
+  // Determine display status (may show "Retrying" instead of "Running")
+  const displayStatus = retryInfo?.isRetrying 
+    ? `Retrying (${retryInfo.attempt}/${retryInfo.maxRetries})`
+    : statusLabels[run.status];
 
   // Combine initial logs with WebSocket updates
   const displayStdout = stdoutLines.join('\n') || run.stdout_tail || '';
@@ -427,11 +469,32 @@ export default function RunDetail() {
             {run.benchmark}
           </h1>
           <div className="flex items-center gap-3">
-            <span className="text-[13px] text-muted flex items-center">
-              {run.status === 'running' && (
+            <span className={`text-[13px] flex items-center ${retryInfo?.isRetrying ? 'text-warning' : 'text-muted'}`}>
+              {run.status === 'running' && !retryInfo?.isRetrying && (
                 <span className="w-1.5 h-1.5 rounded-full bg-foreground mr-2 animate-pulse" />
               )}
-              {statusLabels[run.status]}
+              {retryInfo?.isRetrying && (
+                <svg 
+                  className="w-3 h-3 mr-2 animate-spin" 
+                  fill="none" 
+                  viewBox="0 0 24 24"
+                >
+                  <circle 
+                    className="opacity-25" 
+                    cx="12" 
+                    cy="12" 
+                    r="10" 
+                    stroke="currentColor" 
+                    strokeWidth="4"
+                  />
+                  <path 
+                    className="opacity-75" 
+                    fill="currentColor" 
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              )}
+              {displayStatus}
             </span>
             {isActiveRun && (
               <ConnectionStatus 
@@ -472,6 +535,48 @@ export default function RunDetail() {
               {progress.message}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Retry Status Banner */}
+      {retryInfo && retryInfo.isRetrying && (
+        <div className="mb-6 sm:mb-8 p-4 bg-warning-bg border border-warning-border rounded">
+          <div className="flex items-start gap-3">
+            <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+              <svg 
+                className="w-4 h-4 text-warning animate-spin" 
+                fill="none" 
+                viewBox="0 0 24 24"
+              >
+                <circle 
+                  className="opacity-25" 
+                  cx="12" 
+                  cy="12" 
+                  r="10" 
+                  stroke="currentColor" 
+                  strokeWidth="4"
+                />
+                <path 
+                  className="opacity-75" 
+                  fill="currentColor" 
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-[14px] text-warning font-medium mb-1">
+                Retrying... (attempt {retryInfo.attempt}/{retryInfo.maxRetries})
+              </p>
+              <p className="text-[13px] text-warning/70 leading-relaxed">
+                {retryInfo.error}
+              </p>
+              <div className="flex items-center gap-4 mt-2 text-[12px] text-warning/60">
+                <span>Waiting {retryInfo.delay.toFixed(1)}s before retry</span>
+                <span>•</span>
+                <span>Total delay: {retryInfo.totalDelay.toFixed(1)}s</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
