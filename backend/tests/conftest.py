@@ -11,15 +11,17 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, Generator
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 import aiosqlite
+from httpx import AsyncClient, ASGITransport
 
 # Set test environment variables BEFORE importing app modules
-os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32chars"
+# SECRET_KEY must be >= 32 chars, ENCRYPTION_KEY must be exactly 32 chars
+os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only-32"
+os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32-chars-xxx"
 
 
 @pytest.fixture(scope="session")
@@ -84,6 +86,7 @@ async def _init_test_db(db_path: Path):
                 created_at TEXT NOT NULL,
                 started_at TEXT,
                 finished_at TEXT,
+                scheduled_for TEXT,
                 artifact_dir TEXT,
                 exit_code INTEGER,
                 error TEXT,
@@ -91,9 +94,44 @@ async def _init_test_db(db_path: Path):
                 primary_metric REAL,
                 primary_metric_name TEXT,
                 tags_json TEXT DEFAULT '[]',
+                notes TEXT,
+                template_id TEXT,
+                template_name TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
+        
+        # Templates table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS templates (
+                template_id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                benchmark TEXT NOT NULL,
+                model TEXT NOT NULL,
+                config_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
+        
+        # Notification settings table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                user_id TEXT PRIMARY KEY,
+                email_enabled INTEGER DEFAULT 0,
+                email_address TEXT,
+                webhook_enabled INTEGER DEFAULT 0,
+                webhook_url TEXT,
+                notify_on_complete INTEGER DEFAULT 1,
+                notify_on_fail INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
+        
         await db.commit()
 
 
@@ -129,16 +167,50 @@ async def test_db(temp_db_path: Path, monkeypatch) -> AsyncGenerator[aiosqlite.C
     import app.services.auth
     import app.services.api_keys
     import app.services.run_store
+    import app.services.template_store
     
     monkeypatch.setattr(app.db.session, "get_db", test_get_db)
     monkeypatch.setattr(app.services.auth, "get_db", test_get_db)
     monkeypatch.setattr(app.services.api_keys, "get_db", test_get_db)
     monkeypatch.setattr(app.services.run_store, "get_db", test_get_db)
+    monkeypatch.setattr(app.services.template_store, "get_db", test_get_db)
     
     # Yield the connection for test use
     async with aiosqlite.connect(temp_db_path) as db:
         db.row_factory = aiosqlite.Row
         yield db
+
+
+@pytest_asyncio.fixture
+async def client(test_db) -> AsyncGenerator[AsyncClient, None]:
+    """Create an async test client for API testing."""
+    from app.main import app
+    
+    # Mock the scheduler to prevent it from running during tests
+    with patch('app.services.scheduler.scheduler.start', new_callable=AsyncMock):
+        with patch('app.services.scheduler.scheduler.stop', new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                yield ac
+
+
+@pytest_asyncio.fixture
+async def authenticated_client(client: AsyncClient, test_db) -> AsyncGenerator[tuple[AsyncClient, dict], None]:
+    """Create a test client with authentication."""
+    from app.services.auth import auth_service
+    from app.db.models import UserCreate
+    
+    # Create a test user
+    user_create = UserCreate(email="testuser@example.com", password="testpassword123")
+    user = await auth_service.create_user(user_create)
+    
+    # Get token
+    token = auth_service.create_user_token(user)
+    
+    # Add auth header to client
+    client.headers["Authorization"] = f"Bearer {token.access_token}"
+    
+    yield client, {"user": user, "token": token}
 
 
 @pytest.fixture
@@ -167,6 +239,20 @@ def sample_api_key_data() -> dict:
     return {
         "provider": "openai",
         "key": "sk-test1234567890abcdefghijklmnopqrstuvwxyz",
+    }
+
+
+@pytest.fixture
+def sample_template_data() -> dict:
+    """Sample template data for testing."""
+    return {
+        "name": "Test Template",
+        "benchmark": "mmlu",
+        "model": "openai/gpt-4o",
+        "config": {
+            "limit": 100,
+            "temperature": 0.5,
+        }
     }
 
 
@@ -214,3 +300,76 @@ def artifact_dir_text_only(temp_dir: Path, sample_stdout_text_only: str) -> Path
     (artifact_path / "stdout.log").write_text(sample_stdout_text_only)
     
     return artifact_path
+
+
+@pytest.fixture
+def mock_benchmark_catalog():
+    """Mock benchmark catalog for testing."""
+    return [
+        {
+            "name": "mmlu",
+            "category": "Knowledge",
+            "description_short": "Massive Multitask Language Understanding",
+            "description": "MMLU tests models on 57 subjects",
+            "tags": ["knowledge", "multiple-choice"],
+            "featured": True,
+            "source": "builtin",
+        },
+        {
+            "name": "gsm8k",
+            "category": "Math",
+            "description_short": "Grade School Math",
+            "description": "Math word problems",
+            "tags": ["math", "reasoning"],
+            "featured": True,
+            "source": "builtin",
+        },
+        {
+            "name": "humaneval",
+            "category": "Coding",
+            "description_short": "Human Eval",
+            "description": "Code generation benchmark",
+            "tags": ["coding", "generation"],
+            "featured": True,
+            "source": "builtin",
+        },
+    ]
+
+
+@pytest.fixture
+def mock_executor():
+    """Mock executor for testing run creation without actual execution."""
+    with patch('app.runner.executor.executor') as mock:
+        mock.execute_run = AsyncMock()
+        mock.cancel_run = AsyncMock(return_value=True)
+        yield mock
+
+
+@pytest.fixture
+def mock_model_discovery():
+    """Mock model discovery service."""
+    from app.services.model_discovery import ModelInfo, ModelProvider
+    
+    mock_providers = [
+        ModelProvider(
+            name="OpenAI",
+            provider_key="openai",
+            models=[
+                ModelInfo(id="openai/gpt-4o", name="GPT-4o"),
+                ModelInfo(id="openai/gpt-4-turbo", name="GPT-4 Turbo"),
+            ],
+            error=None,
+        ),
+        ModelProvider(
+            name="Anthropic",
+            provider_key="anthropic",
+            models=[
+                ModelInfo(id="anthropic/claude-3-opus", name="Claude 3 Opus"),
+            ],
+            error=None,
+        ),
+    ]
+    
+    with patch('app.services.model_discovery.model_discovery_service') as mock:
+        mock.get_available_models = AsyncMock(return_value=mock_providers)
+        yield mock

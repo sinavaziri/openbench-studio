@@ -16,8 +16,8 @@ from datetime import datetime
 import pytest
 
 # Set test environment before imports
-os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only"
-os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32chars"
+os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only-32"
+os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32-chars-xxx"
 
 from app.services.run_store import RunStore
 from app.db.models import RunCreate, RunStatus
