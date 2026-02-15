@@ -377,15 +377,15 @@ export interface RunTemplateCreate {
 // =============================================================================
 
 export interface NotificationSettings {
-  email_enabled: boolean;
   webhook_url: string | null;
+  webhook_enabled: boolean;
   notify_on_complete: boolean;
   notify_on_failure: boolean;
 }
 
 export interface NotificationSettingsUpdate {
-  email_enabled?: boolean;
   webhook_url?: string;
+  webhook_enabled?: boolean;
   notify_on_complete?: boolean;
   notify_on_failure?: boolean;
 }

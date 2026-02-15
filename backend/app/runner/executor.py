@@ -31,6 +31,7 @@ from app.core.retry import (
 from app.db.models import Run, RunConfig, RunStatus
 from app.runner.command_builder import build_mock_command, command_to_string
 from app.runner.summary_parser import parse_and_write_summary
+from app.services.notifications import notification_service
 from app.services.run_store import run_store
 
 # Configure logging
@@ -516,6 +517,28 @@ class RunExecutor:
             except Exception as e:
                 logger.debug(f"Run {run.run_id}: WebSocket broadcast failed: {e}")
             
+            # Send webhook notification if user has it configured
+            if run.user_id and status in (RunStatus.COMPLETED, RunStatus.FAILED):
+                try:
+                    # Calculate duration
+                    duration_seconds = None
+                    if run.started_at:
+                        started_at = run.started_at if isinstance(run.started_at, datetime) else datetime.fromisoformat(str(run.started_at))
+                        duration_seconds = int((datetime.utcnow() - started_at).total_seconds())
+                    
+                    await notification_service.send_run_notification(
+                        user_id=run.user_id,
+                        run_id=run.run_id,
+                        benchmark=run.benchmark,
+                        model=run.model,
+                        status=status.value,
+                        score=primary_metric_value,
+                        duration_seconds=duration_seconds,
+                        error=error,
+                    )
+                except Exception as e:
+                    logger.warning(f"Run {run.run_id}: Webhook notification failed: {e}")
+            
             # Clear retry state
             self._clear_retry_state(run.run_id)
                 
@@ -523,22 +546,50 @@ class RunExecutor:
             logger.error(f"Run {run.run_id}: Command not found: {e}")
             self._running_processes.pop(run.run_id, None)
             self._clear_retry_state(run.run_id)
+            error_msg = f"Command not found: {e}. Make sure Python is installed."
             await run_store.update_run(
                 run.run_id,
                 status=RunStatus.FAILED,
                 finished_at=datetime.utcnow(),
-                error=f"Command not found: {e}. Make sure Python is installed.",
+                error=error_msg,
             )
+            # Send failure notification
+            if run.user_id:
+                try:
+                    await notification_service.send_run_notification(
+                        user_id=run.user_id,
+                        run_id=run.run_id,
+                        benchmark=run.benchmark,
+                        model=run.model,
+                        status="failed",
+                        error=error_msg,
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Run {run.run_id}: Webhook notification failed: {notify_err}")
         except Exception as e:
             logger.error(f"Run {run.run_id}: Unexpected error: {e}", exc_info=True)
             self._running_processes.pop(run.run_id, None)
             self._clear_retry_state(run.run_id)
+            error_msg = str(e)
             await run_store.update_run(
                 run.run_id,
                 status=RunStatus.FAILED,
                 finished_at=datetime.utcnow(),
-                error=str(e),
+                error=error_msg,
             )
+            # Send failure notification
+            if run.user_id:
+                try:
+                    await notification_service.send_run_notification(
+                        user_id=run.user_id,
+                        run_id=run.run_id,
+                        benchmark=run.benchmark,
+                        model=run.model,
+                        status="failed",
+                        error=error_msg,
+                    )
+                except Exception as notify_err:
+                    logger.warning(f"Run {run.run_id}: Webhook notification failed: {notify_err}")
 
     async def cancel_run(self, run_id: str) -> bool:
         """

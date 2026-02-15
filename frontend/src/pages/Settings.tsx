@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { api, ApiKeyPublic, ApiKeyProvider, CostsResponse, CostThreshold } from '../api/client';
+import { api, ApiKeyPublic, ApiKeyProvider, CostsResponse, CostThreshold, NotificationSettings } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { parseError } from '../utils/errorMessages';
 import Layout from '../components/Layout';
@@ -173,6 +173,15 @@ export default function Settings() {
   const [costStats, setCostStats] = useState<CostsResponse | null>(null);
   const [costThreshold, setCostThreshold] = useState<CostThreshold | null>(null);
   const [costPeriod, setCostPeriod] = useState<number>(30);
+  
+  // Notification settings state
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [notifyOnComplete, setNotifyOnComplete] = useState(true);
+  const [notifyOnFailure, setNotifyOnFailure] = useState(true);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -204,13 +213,21 @@ export default function Settings() {
 
   const loadData = async () => {
     try {
-      const [keysData, version] = await Promise.all([
+      const [keysData, version, notifSettings] = await Promise.all([
         api.listApiKeys(),
         api.getVersion().catch(() => null),
+        api.getNotificationSettings().catch(() => null),
       ]);
       setApiKeys(keysData);
       if (version) {
         setVersionInfo(version);
+      }
+      if (notifSettings) {
+        setNotificationSettings(notifSettings);
+        setWebhookUrl(notifSettings.webhook_url || '');
+        setWebhookEnabled(notifSettings.webhook_enabled);
+        setNotifyOnComplete(notifSettings.notify_on_complete);
+        setNotifyOnFailure(notifSettings.notify_on_failure);
       }
       setError(null);
     } catch (err) {
@@ -303,6 +320,55 @@ export default function Settings() {
     toast.success('Signed out successfully');
     navigate('/');
   };
+
+  const handleSaveNotificationSettings = async () => {
+    setSavingNotifications(true);
+    try {
+      const updated = await api.updateNotificationSettings({
+        webhook_url: webhookUrl || undefined,
+        webhook_enabled: webhookEnabled,
+        notify_on_complete: notifyOnComplete,
+        notify_on_failure: notifyOnFailure,
+      });
+      setNotificationSettings(updated);
+      toast.success('Notification settings saved', { icon: '🔔' });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to save settings';
+      toast.error(errorMsg);
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    if (!webhookUrl) {
+      toast.error('Please enter a webhook URL first');
+      return;
+    }
+    
+    setTestingWebhook(true);
+    try {
+      const result = await api.testWebhook(webhookUrl);
+      if (result.success) {
+        toast.success(result.message, { icon: '✅' });
+      } else {
+        toast.error(result.message, { duration: 5000 });
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to test webhook';
+      toast.error(errorMsg);
+    } finally {
+      setTestingWebhook(false);
+    }
+  };
+
+  // Check if notification settings have changed
+  const notificationSettingsChanged = notificationSettings && (
+    (webhookUrl || '') !== (notificationSettings.webhook_url || '') ||
+    webhookEnabled !== notificationSettings.webhook_enabled ||
+    notifyOnComplete !== notificationSettings.notify_on_complete ||
+    notifyOnFailure !== notificationSettings.notify_on_failure
+  );
 
   if (loading) {
     return (
@@ -503,6 +569,120 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* Webhook Notifications Section */}
+      <div className="mb-8 sm:mb-12">
+        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4 sm:mb-6">
+          Webhook Notifications
+        </p>
+        
+        <div className="bg-background-secondary border border-border p-4 sm:p-6">
+          <p className="text-[12px] sm:text-[13px] text-muted-foreground mb-6">
+            Get notified when benchmark runs complete or fail. We'll POST a JSON payload to your webhook URL.
+          </p>
+          
+          {/* Webhook URL Input */}
+          <div className="mb-6">
+            <label className="block text-[12px] text-muted-foreground mb-2">
+              Webhook URL
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="url"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://hooks.example.com/webhook"
+                className="flex-1 px-3 py-3 sm:py-2 bg-background-tertiary border border-border-secondary text-foreground text-[13px] font-mono focus:border-muted-foreground focus:outline-none transition-colors min-h-[48px] sm:min-h-[44px]"
+              />
+              <button
+                onClick={handleTestWebhook}
+                disabled={testingWebhook || !webhookUrl}
+                className="w-full sm:w-auto px-4 py-3 sm:py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 min-h-[48px] sm:min-h-[44px]"
+              >
+                {testingWebhook ? 'Testing...' : 'Test'}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">
+              We'll send a test payload to verify your webhook is working.
+            </p>
+          </div>
+          
+          {/* Toggle Options */}
+          <div className="space-y-4 mb-6">
+            {/* Enable Webhooks */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={webhookEnabled}
+                onChange={(e) => setWebhookEnabled(e.target.checked)}
+                className="w-4 h-4 rounded border-border-secondary bg-background-tertiary text-accent focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              />
+              <span className="text-[13px] text-foreground">Enable webhook notifications</span>
+            </label>
+            
+            {/* Notify on Complete */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifyOnComplete}
+                onChange={(e) => setNotifyOnComplete(e.target.checked)}
+                disabled={!webhookEnabled}
+                className="w-4 h-4 rounded border-border-secondary bg-background-tertiary text-accent focus:ring-0 focus:ring-offset-0 cursor-pointer disabled:opacity-50"
+              />
+              <span className={`text-[13px] ${webhookEnabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+                Notify when runs complete successfully
+              </span>
+            </label>
+            
+            {/* Notify on Failure */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifyOnFailure}
+                onChange={(e) => setNotifyOnFailure(e.target.checked)}
+                disabled={!webhookEnabled}
+                className="w-4 h-4 rounded border-border-secondary bg-background-tertiary text-accent focus:ring-0 focus:ring-offset-0 cursor-pointer disabled:opacity-50"
+              />
+              <span className={`text-[13px] ${webhookEnabled ? 'text-foreground' : 'text-muted-foreground'}`}>
+                Notify when runs fail
+              </span>
+            </label>
+          </div>
+          
+          {/* Save Button */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleSaveNotificationSettings}
+              disabled={savingNotifications || !notificationSettingsChanged}
+              className="px-4 py-3 sm:py-2 text-[13px] text-accent-foreground bg-accent hover:opacity-90 disabled:opacity-50 transition-colors min-h-[48px] sm:min-h-[44px]"
+            >
+              {savingNotifications ? 'Saving...' : 'Save Settings'}
+            </button>
+            {notificationSettingsChanged && (
+              <span className="text-[12px] text-muted-foreground">Unsaved changes</span>
+            )}
+          </div>
+          
+          {/* Payload Example */}
+          <div className="mt-6 pt-6 border-t border-border">
+            <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-3">
+              Example Payload
+            </p>
+            <pre className="text-[11px] sm:text-[12px] text-muted-foreground font-mono bg-background-tertiary p-4 overflow-x-auto">
+{`{
+  "event": "run_completed",
+  "run_id": "abc123",
+  "benchmark": "mmlu",
+  "model": "openai/gpt-4o",
+  "status": "completed",
+  "score": 0.85,
+  "duration_seconds": 120,
+  "timestamp": "2026-02-14T19:00:00Z"
+}`}
+            </pre>
+          </div>
+        </div>
+      </div>
 
       {/* API Keys Section */}
       <div>

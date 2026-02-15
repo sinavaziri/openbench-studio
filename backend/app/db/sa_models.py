@@ -115,3 +115,40 @@ class RunTemplate(Base):
     # Relationships
     user = relationship("User", back_populates="templates")
     runs = relationship("Run", back_populates="template")
+
+
+class NotificationSettings(Base):
+    """User notification settings for webhooks."""
+    __tablename__ = "notification_settings"
+
+    settings_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, unique=True, index=True)
+    webhook_url = Column(String, nullable=True)
+    webhook_enabled = Column(Integer, nullable=False, default=0)  # SQLite boolean
+    notify_on_complete = Column(Integer, nullable=False, default=1)  # SQLite boolean
+    notify_on_failure = Column(Integer, nullable=False, default=1)  # SQLite boolean
+    created_at = Column(String, nullable=False)
+    updated_at = Column(String, nullable=False)
+
+    # Relationships
+    user = relationship("User")
+
+
+class WebhookLog(Base):
+    """Log of webhook delivery attempts."""
+    __tablename__ = "webhook_logs"
+
+    log_id = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
+    run_id = Column(String, nullable=True, index=True)
+    event_type = Column(String, nullable=False)  # run_completed, run_failed, test
+    webhook_url = Column(String, nullable=False)
+    status = Column(String, nullable=False)  # success, failed
+    status_code = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=1)
+    payload_json = Column(Text, nullable=True)
+    created_at = Column(String, nullable=False)
+
+    # Relationships
+    user = relationship("User")
