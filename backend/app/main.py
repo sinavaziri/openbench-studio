@@ -1,4 +1,5 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -6,6 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
+# Configure root logger to ensure all logs are captured
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
 from app.api.routes import api_keys, auth, benchmarks, health, notifications, runs, settings, stats, templates, ws
 from app.core.config import API_PREFIX
@@ -62,17 +70,36 @@ tags_metadata = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    print("[STARTUP] Lifespan starting...", flush=True)
+    
     # Startup: run database migrations
-    logger.info("Running database migrations...")
-    run_migrations()
-    logger.info("Database migrations complete")
+    try:
+        print("[STARTUP] Running database migrations...", flush=True)
+        logger.info("Running database migrations...")
+        run_migrations()
+        print("[STARTUP] Migrations complete!", flush=True)
+        logger.info("Database migrations complete")
+    except Exception as e:
+        print(f"[STARTUP] Migration error: {e}", flush=True)
+        logger.exception("Migration failed")
+        raise
     
     # Start the run scheduler
-    from app.services.scheduler import scheduler
-    await scheduler.start()
-    logger.info("Run scheduler started")
+    try:
+        print("[STARTUP] Importing scheduler...", flush=True)
+        from app.services.scheduler import scheduler
+        print("[STARTUP] Starting scheduler...", flush=True)
+        await scheduler.start()
+        print("[STARTUP] Scheduler started!", flush=True)
+        logger.info("Run scheduler started")
+    except Exception as e:
+        print(f"[STARTUP] Scheduler error: {e}", flush=True)
+        logger.exception("Scheduler failed to start")
+        raise
     
+    print("[STARTUP] Yielding to app...", flush=True)
     yield
+    print("[SHUTDOWN] Shutting down...", flush=True)
     
     # Shutdown: stop the scheduler
     await scheduler.stop()
