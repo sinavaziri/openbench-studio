@@ -644,15 +644,27 @@ class VersionResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    """Health check response.
+    
+    Note: The actual response model is defined in app/api/routes/health.py
+    with full database, version, and uptime information.
+    """
     
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {"status": "ok"}
+            "example": {
+                "status": "healthy",
+                "database": "connected",
+                "version": "0.1.0",
+                "uptime": 3600.5
+            }
         }
     )
     
-    status: str = Field(description="Health status")
+    status: str = Field(description="Health status (healthy/unhealthy)")
+    database: str = Field(default="connected", description="Database connection status")
+    version: str = Field(default="0.1.0", description="Application version")
+    uptime: float = Field(default=0.0, description="Seconds since application start")
 
 
 # =============================================================================
