@@ -1,12 +1,15 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.routes import api_keys, auth, benchmarks, health, notifications, runs, settings, stats, templates, ws
 from app.core.config import API_PREFIX
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler, RateLimitHeadersMiddleware
 from app.db.migrations import run_migrations
 
 logger = logging.getLogger(__name__)
@@ -104,7 +107,21 @@ Obtain a token via `/api/auth/login` or `/api/auth/register`.
 
 ## Rate Limits
 
-Currently no rate limits are enforced, but please be respectful of shared resources.
+Rate limits are enforced to ensure fair usage:
+
+| Endpoint | Limit | Key |
+|----------|-------|-----|
+| `POST /auth/login` | 5/minute | IP address |
+| `POST /auth/register` | 3/minute | IP address |
+| `POST /runs` | 10/minute | User ID |
+| `GET /available-models` | 30/minute | User ID |
+
+Rate limit headers are included in all responses:
+- `X-RateLimit-Limit`: Maximum requests allowed
+- `X-RateLimit-Remaining`: Requests remaining in current window
+- `X-RateLimit-Reset`: Seconds until limit resets
+
+When rate limited, you'll receive a `429 Too Many Requests` response with a `Retry-After` header.
 """,
     version="1.0.0",
     openapi_tags=tags_metadata,
@@ -158,6 +175,20 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+
+# Add rate limiter state to the app
+app.state.limiter = limiter
+
+# Add custom rate limit exceeded handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Add rate limit headers middleware
+app.add_middleware(RateLimitHeadersMiddleware)
 
 
 # CORS middleware for frontend

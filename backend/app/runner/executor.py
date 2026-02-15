@@ -6,6 +6,7 @@ Executes benchmark runs as subprocesses, handling:
 - Mock mode for development/testing
 - Graceful cancellation
 - Output parsing and result storage
+- Automatic retry with exponential backoff on transient errors
 """
 
 import asyncio
@@ -19,6 +20,14 @@ from pathlib import Path
 from typing import Optional
 
 from app.core.config import RUNS_DIR
+from app.core.retry import (
+    RetryConfig,
+    RetryState,
+    calculate_delay,
+    is_retryable_status_code,
+    RETRYABLE_STATUS_CODES,
+    NON_RETRYABLE_STATUS_CODES,
+)
 from app.db.models import Run, RunConfig, RunStatus
 from app.runner.command_builder import build_mock_command, command_to_string
 from app.runner.summary_parser import parse_and_write_summary
@@ -101,7 +110,7 @@ class RunExecutor:
             f.write(command_to_string(cmd))
         logger.debug(f"Wrote command to {command_path}")
 
-    def _detect_failure(self, stdout_content: str, stderr_content: str) -> tuple[bool, Optional[str]]:
+    def _detect_failure(self, stdout_content: str, stderr_content: str) -> tuple[bool, Optional[str], bool]:
         """
         Detect benchmark failures from output content.
         
@@ -113,38 +122,51 @@ class RunExecutor:
             stderr_content: Content from stderr.log
             
         Returns:
-            Tuple of (is_failure, error_message)
+            Tuple of (is_failure, error_message, is_retryable)
         """
+        # Patterns: (pattern, default_message, is_retryable)
         failure_patterns = [
-            ("Task interrupted (no samples completed", "Benchmark interrupted - no samples completed"),
-            ("Error code:", None),  # Extract actual error
-            ("NotFoundError:", "Model not found or access denied"),
-            ("does not exist or you do not have access", "Model not found or access denied"),
-            ("model_not_found", "Model not found"),
-            ("AuthenticationError:", "Authentication failed - check API key"),
-            ("PermissionDeniedError:", "Permission denied - check API key permissions"),
-            ("RateLimitError:", "Rate limit exceeded - try again later"),
-            ("InsufficientQuotaError:", "Insufficient API quota"),
-            ("InvalidRequestError:", "Invalid request parameters"),
-            ("[CANCELED]", "Run was canceled by user"),
+            ("Task interrupted (no samples completed", "Benchmark interrupted - no samples completed", False),
+            ("Error code:", None, False),  # Extract actual error
+            ("NotFoundError:", "Model not found or access denied", False),
+            ("does not exist or you do not have access", "Model not found or access denied", False),
+            ("model_not_found", "Model not found", False),
+            ("AuthenticationError:", "Authentication failed - check API key", False),
+            ("PermissionDeniedError:", "Permission denied - check API key permissions", False),
+            # Retryable errors
+            ("RateLimitError:", "Rate limit exceeded", True),  # 429
+            ("rate_limit_exceeded", "Rate limit exceeded", True),
+            ("Too Many Requests", "Too many requests - rate limited", True),
+            ("InternalServerError:", "Provider server error", True),  # 500
+            ("ServiceUnavailableError:", "Provider service unavailable", True),  # 503
+            ("BadGatewayError:", "Provider bad gateway", True),  # 502
+            ("GatewayTimeoutError:", "Provider gateway timeout", True),  # 504
+            ("Connection refused", "Connection refused - service may be down", True),
+            ("Connection reset", "Connection reset - service may be down", True),
+            ("ETIMEDOUT", "Connection timed out", True),
+            ("ECONNRESET", "Connection reset by peer", True),
+            # Non-retryable errors
+            ("InsufficientQuotaError:", "Insufficient API quota", False),
+            ("InvalidRequestError:", "Invalid request parameters", False),
+            ("[CANCELED]", "Run was canceled by user", False),
         ]
         
         combined_content = stdout_content + "\n" + stderr_content
         
-        for pattern, default_message in failure_patterns:
+        for pattern, default_message, is_retryable in failure_patterns:
             if pattern in combined_content:
-                logger.debug(f"Detected failure pattern: {pattern}")
+                logger.debug(f"Detected failure pattern: {pattern} (retryable: {is_retryable})")
                 
                 # Try to extract a more specific error message
                 error_msg = self._extract_error_message(combined_content, pattern)
                 if error_msg:
-                    return True, error_msg
+                    return True, error_msg, is_retryable
                 elif default_message:
-                    return True, default_message
+                    return True, default_message, is_retryable
                 else:
-                    return True, f"Benchmark failed: {pattern}"
+                    return True, f"Benchmark failed: {pattern}", is_retryable
         
-        return False, None
+        return False, None, False
 
     def _extract_error_message(self, content: str, trigger_pattern: str) -> Optional[str]:
         """

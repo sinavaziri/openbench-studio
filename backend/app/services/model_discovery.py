@@ -3,9 +3,15 @@ Model discovery service - dynamically fetch available models from provider APIs.
 
 This service queries each provider's API to get a list of available models
 based on the user's stored API keys.
+
+Features:
+- Automatic retry with exponential backoff on transient errors
+- Provider-specific retry configurations
+- Comprehensive logging for debugging
 """
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -15,8 +21,17 @@ from enum import Enum
 import httpx
 from pydantic import BaseModel
 
+from app.core.retry import (
+    with_retry,
+    get_retry_config,
+    is_retryable_status_code,
+    RetryableError,
+    NonRetryableError,
+)
 from app.db.models import ApiKeyProvider
 from app.services.api_keys import api_key_service
+
+logger = logging.getLogger(__name__)
 
 
 class ModelCapabilities(BaseModel):
@@ -268,8 +283,8 @@ class ModelDiscoveryService:
             print(f"Failed to decrypt API key for {provider}: {e}")
             return None
         
-        # Make API request
-        try:
+        # Make API request with retry logic
+        async def _make_request() -> Optional[ModelProvider]:
             async with httpx.AsyncClient(timeout=config.timeout) as client:
                 headers = {
                     config.auth_header: f"{config.auth_prefix}{decrypted_key}"
@@ -278,8 +293,28 @@ class ModelDiscoveryService:
                 url = f"{config.base_url}{config.models_endpoint}"
                 response = await client.get(url, headers=headers)
                 
+                # Check for non-retryable errors
+                if response.status_code in {400, 401, 403, 404}:
+                    logger.warning(
+                        f"Non-retryable error from {provider}: HTTP {response.status_code}"
+                    )
+                    raise NonRetryableError(
+                        f"Failed to fetch models: HTTP {response.status_code}",
+                        status_code=response.status_code,
+                        provider=provider,
+                    )
+                
+                # Check for retryable errors
                 if response.status_code != 200:
-                    print(f"Failed to fetch models from {provider}: HTTP {response.status_code}")
+                    if is_retryable_status_code(response.status_code):
+                        raise RetryableError(
+                            f"Failed to fetch models: HTTP {response.status_code}",
+                            status_code=response.status_code,
+                            provider=provider,
+                        )
+                    logger.warning(
+                        f"Failed to fetch models from {provider}: HTTP {response.status_code}"
+                    )
                     return None
                 
                 data = response.json()
@@ -291,13 +326,36 @@ class ModelDiscoveryService:
                         provider_key=provider,
                         models=models
                     )
-                
-        except httpx.TimeoutException:
-            print(f"Timeout fetching models from {provider}")
-        except Exception as e:
-            print(f"Error fetching models from {provider}: {e}")
+                return None
         
-        return None
+        def _on_retry(attempt: int, delay: float, exc: Exception):
+            status_code = getattr(exc, 'status_code', None)
+            logger.info(
+                f"Retrying model fetch for {provider} "
+                f"(attempt {attempt}, delay {delay:.2f}s, status: {status_code})"
+            )
+        
+        try:
+            return await with_retry(
+                _make_request,
+                provider=provider,
+                operation_name=f"fetch_models({provider})",
+                on_retry=_on_retry,
+            )
+        except NonRetryableError as e:
+            logger.warning(f"Non-retryable error for {provider}: {e}")
+            return None
+        except RetryableError as e:
+            logger.error(
+                f"Failed to fetch models from {provider} after retries: {e}"
+            )
+            return None
+        except httpx.TimeoutException:
+            logger.warning(f"Timeout fetching models from {provider}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error fetching models from {provider}: {e}")
+            return None
     
     def _parse_models_response(self, provider: ApiKeyProvider, data: Any) -> List[ModelInfo]:
         """

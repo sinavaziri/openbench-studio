@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from app.core.auth import get_current_user, get_optional_user
 from app.core.config import RUNS_DIR
+from app.core.rate_limit import limiter, get_user_id_or_ip, RATE_LIMIT_RUNS
 from app.core.errors import (
     RunNotFoundError,
     RunStillRunningError,
@@ -54,7 +55,7 @@ router = APIRouter()
     "/runs",
     response_model=RunCreatedResponse,
     summary="Create benchmark run",
-    description="Create and start a new benchmark run.",
+    description="Create and start a new benchmark run. Rate limited to 10 requests per minute per user.",
     responses={
         200: {
             "description": "Run created and started",
@@ -69,10 +70,24 @@ router = APIRouter()
         },
         422: {
             "description": "Validation error",
+        },
+        429: {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please slow down.",
+                        "retry_after": 60
+                    }
+                }
+            }
         }
     }
 )
+@limiter.limit(RATE_LIMIT_RUNS, key_func=get_user_id_or_ip)
 async def create_run(
+    request: Request,
     run_create: RunCreate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),

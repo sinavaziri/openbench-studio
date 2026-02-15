@@ -4,10 +4,11 @@ Authentication routes for user registration, login, and profile management.
 All authentication uses JWT tokens with Bearer authentication scheme.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.core.auth import get_current_user
 from app.core.errors import InvalidCredentialsError, EmailExistsError, ErrorResponse
+from app.core.rate_limit import limiter, get_ip_address, RATE_LIMIT_LOGIN, RATE_LIMIT_REGISTER
 from app.db.models import Token, User, UserCreate, UserLogin, UserPublic
 from app.services.auth import auth_service
 
@@ -18,7 +19,7 @@ router = APIRouter()
     "/auth/register",
     response_model=Token,
     summary="Register new account",
-    description="Create a new user account and receive an access token.",
+    description="Create a new user account and receive an access token. Rate limited to 3 requests per minute per IP.",
     responses={
         200: {
             "description": "Successfully registered",
@@ -36,10 +37,23 @@ router = APIRouter()
         },
         422: {
             "description": "Validation error (invalid email or password too short)",
+        },
+        429: {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please slow down.",
+                        "retry_after": 60
+                    }
+                }
+            }
         }
     }
 )
-async def register(user_create: UserCreate):
+@limiter.limit(RATE_LIMIT_REGISTER, key_func=get_ip_address)
+async def register(request: Request, user_create: UserCreate):
     """
     Register a new user account.
     
@@ -67,7 +81,7 @@ async def register(user_create: UserCreate):
     "/auth/login",
     response_model=Token,
     summary="Login",
-    description="Authenticate with email and password to receive an access token.",
+    description="Authenticate with email and password to receive an access token. Rate limited to 5 requests per minute per IP.",
     responses={
         200: {
             "description": "Successfully authenticated",
@@ -82,10 +96,23 @@ async def register(user_create: UserCreate):
                     }
                 }
             }
+        },
+        429: {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please slow down.",
+                        "retry_after": 60
+                    }
+                }
+            }
         }
     }
 )
-async def login(user_login: UserLogin):
+@limiter.limit(RATE_LIMIT_LOGIN, key_func=get_ip_address)
+async def login(request: Request, user_login: UserLogin):
     """
     Login with email and password.
     

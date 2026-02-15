@@ -7,9 +7,10 @@ They are used to authenticate with LLM providers when running benchmarks.
 
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.core.auth import get_current_user
+from app.core.rate_limit import limiter, get_user_id_or_ip, RATE_LIMIT_AVAILABLE_MODELS
 from app.core.errors import ApiKeyNotFoundError
 from app.db.models import (
     ApiKeyCreate, 
@@ -225,7 +226,7 @@ def check_compatibility(
 @router.get(
     "/available-models",
     summary="Get available models",
-    description="Get all available models for the current user based on their configured API keys.",
+    description="Get all available models for the current user based on their configured API keys. Rate limited to 30 requests per minute per user.",
     responses={
         200: {
             "description": "Available models by provider",
@@ -247,10 +248,24 @@ def check_compatibility(
         },
         401: {
             "description": "Not authenticated",
+        },
+        429: {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error": "rate_limit_exceeded",
+                        "message": "Too many requests. Please slow down.",
+                        "retry_after": 60
+                    }
+                }
+            }
         }
     }
 )
+@limiter.limit(RATE_LIMIT_AVAILABLE_MODELS, key_func=get_user_id_or_ip)
 async def get_available_models(
+    request: Request,
     force_refresh: bool = False,
     include_capabilities: bool = Query(
         False,

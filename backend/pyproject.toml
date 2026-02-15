@@ -21,6 +21,7 @@ dependencies = [
     "email-validator>=2.0.0",
     "httpx>=0.25.0",
     "openbench>=0.5.3",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
