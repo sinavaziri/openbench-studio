@@ -1,7 +1,7 @@
 """Add scheduled_for column to runs table
 
-Revision ID: e5f6g7h8i901
-Revises: d4e5f6g7h890
+Revision ID: e5f6g7h8i902
+Revises: e5f6g7h8i901
 Create Date: 2026-02-14
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'e5f6g7h8i901'
-down_revision = 'd4e5f6g7h890'
+revision = 'e5f6g7h8i902'
+down_revision = 'e5f6g7h8i901'
 branch_labels = None
 depends_on = None
 
