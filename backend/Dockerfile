@@ -1,5 +1,5 @@
 # Backend Dockerfile - FastAPI with Python 3.11
-# Works when built from repo root (Railway) or backend/ dir (local)
+# Built from backend/ directory (Railway root = backend)
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -11,17 +11,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files (handle both build contexts)
-COPY backend/pyproject.toml backend/README.md ./
+# Copy dependency files
+COPY pyproject.toml README.md ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir hatchling && \
     pip install --no-cache-dir .
 
 # Copy application code
-COPY backend/app/ ./app/
-COPY backend/alembic/ ./alembic/
-COPY backend/alembic.ini ./
+COPY app/ ./app/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
 
 # Create data directory
 RUN mkdir -p /app/data/runs
