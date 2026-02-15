@@ -12,6 +12,7 @@ from typing import AsyncGenerator, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field, ConfigDict
 
 from app.core.auth import get_current_user, get_optional_user
 from app.core.config import RUNS_DIR

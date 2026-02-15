@@ -18,6 +18,7 @@ class RunStore:
         user_id: Optional[str] = None,
         template_id: Optional[str] = None,
         template_name: Optional[str] = None,
+        scheduled_for: Optional[datetime] = None,
     ) -> Run:
         """Create a new run and store it in the database."""
         config = RunConfig(**run_create.model_dump())
@@ -26,6 +27,7 @@ class RunStore:
             model=run_create.model,
             config=config,
             user_id=user_id,
+            scheduled_for=scheduled_for,
         )
         
         async with get_db() as db:
@@ -33,9 +35,9 @@ class RunStore:
                 """
                 INSERT INTO runs (
                     run_id, user_id, benchmark, model, status, created_at,
-                    started_at, finished_at, artifact_dir, exit_code, error, 
+                    started_at, finished_at, scheduled_for, artifact_dir, exit_code, error, 
                     config_json, tags_json, template_id, template_name
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
@@ -46,6 +48,7 @@ class RunStore:
                     run.created_at.isoformat(),
                     None,
                     None,
+                    scheduled_for.isoformat() if scheduled_for else None,
                     run.artifact_dir,
                     run.exit_code,
                     run.error,
@@ -252,6 +255,7 @@ class RunStore:
         status: Optional[RunStatus] = None,
         started_at: Optional[datetime] = None,
         finished_at: Optional[datetime] = None,
+        scheduled_for: Optional[datetime] = ...,  # Use ... as sentinel to distinguish None from not-set
         artifact_dir: Optional[str] = None,
         exit_code: Optional[int] = None,
         error: Optional[str] = None,
@@ -271,6 +275,9 @@ class RunStore:
         if finished_at is not None:
             updates.append("finished_at = ?")
             params.append(finished_at.isoformat())
+        if scheduled_for is not ...:  # Explicitly set (including None to clear it)
+            updates.append("scheduled_for = ?")
+            params.append(scheduled_for.isoformat() if scheduled_for else None)
         if artifact_dir is not None:
             updates.append("artifact_dir = ?")
             params.append(artifact_dir)
@@ -452,6 +459,7 @@ class RunStore:
         notes = None
         template_id = None
         template_name = None
+        scheduled_for = None
         try:
             notes = row["notes"]
         except (KeyError, IndexError):
@@ -464,6 +472,10 @@ class RunStore:
             template_name = row["template_name"]
         except (KeyError, IndexError):
             pass
+        try:
+            scheduled_for = datetime.fromisoformat(row["scheduled_for"]) if row["scheduled_for"] else None
+        except (KeyError, IndexError):
+            pass
         
         return Run(
             run_id=row["run_id"],
@@ -474,6 +486,7 @@ class RunStore:
             created_at=datetime.fromisoformat(row["created_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
             finished_at=datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None,
+            scheduled_for=scheduled_for,
             artifact_dir=row["artifact_dir"],
             exit_code=row["exit_code"],
             error=row["error"],
@@ -491,12 +504,17 @@ class RunStore:
         # Safely get optional columns (may not exist in older databases)
         notes = None
         template_name = None
+        scheduled_for = None
         try:
             notes = row["notes"]
         except (KeyError, IndexError):
             pass
         try:
             template_name = row["template_name"]
+        except (KeyError, IndexError):
+            pass
+        try:
+            scheduled_for = datetime.fromisoformat(row["scheduled_for"]) if row["scheduled_for"] else None
         except (KeyError, IndexError):
             pass
         
@@ -507,12 +525,103 @@ class RunStore:
             status=RunStatus(row["status"]),
             created_at=datetime.fromisoformat(row["created_at"]),
             finished_at=datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None,
+            scheduled_for=scheduled_for,
             primary_metric=row["primary_metric"],
             primary_metric_name=row["primary_metric_name"],
             tags=self._parse_tags(row),
             notes=notes,
             template_name=template_name,
         )
+    
+    async def list_scheduled_runs(self, user_id: Optional[str] = None) -> list[RunSummary]:
+        """
+        List all pending scheduled runs for a user.
+        
+        Returns runs that have scheduled_for set and status is queued.
+        """
+        conditions = ["scheduled_for IS NOT NULL", "status = ?"]
+        params: list = [RunStatus.QUEUED.value]
+        
+        if user_id is not None:
+            conditions.append("(user_id = ? OR user_id IS NULL)")
+            params.append(user_id)
+        
+        where_clause = " AND ".join(conditions)
+        query = f"SELECT * FROM runs WHERE {where_clause} ORDER BY scheduled_for ASC"
+        
+        async with get_db() as db:
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+            return [self._row_to_summary(row) for row in rows]
+    
+    async def get_due_scheduled_runs(self) -> list[Run]:
+        """
+        Get all scheduled runs that are due for execution.
+        
+        Returns runs where scheduled_for <= now and status is queued.
+        """
+        now = datetime.utcnow().isoformat()
+        query = """
+            SELECT * FROM runs 
+            WHERE scheduled_for IS NOT NULL 
+            AND scheduled_for <= ? 
+            AND status = ?
+            ORDER BY scheduled_for ASC
+        """
+        
+        async with get_db() as db:
+            cursor = await db.execute(query, (now, RunStatus.QUEUED.value))
+            rows = await cursor.fetchall()
+            return [self._row_to_run(row) for row in rows]
+    
+    async def update_scheduled_time(
+        self, 
+        run_id: str, 
+        scheduled_for: datetime, 
+        user_id: Optional[str] = None
+    ) -> Optional[Run]:
+        """
+        Update the scheduled time for a run.
+        
+        Only works for runs that are still queued/scheduled.
+        """
+        # Check the run exists, belongs to user, and is still queued
+        run = await self.get_run(run_id, user_id=user_id)
+        if run is None:
+            return None
+        
+        if run.status != RunStatus.QUEUED:
+            return None  # Can't reschedule a run that's already started
+        
+        async with get_db() as db:
+            if user_id is not None:
+                await db.execute(
+                    "UPDATE runs SET scheduled_for = ? WHERE run_id = ? AND (user_id = ? OR user_id IS NULL) AND status = ?",
+                    (scheduled_for.isoformat(), run_id, user_id, RunStatus.QUEUED.value),
+                )
+            else:
+                await db.execute(
+                    "UPDATE runs SET scheduled_for = ? WHERE run_id = ? AND status = ?",
+                    (scheduled_for.isoformat(), run_id, RunStatus.QUEUED.value),
+                )
+            await db.commit()
+        
+        return await self.get_run(run_id, user_id=user_id)
+    
+    async def cancel_scheduled_run(self, run_id: str, user_id: Optional[str] = None) -> bool:
+        """
+        Cancel a scheduled run (delete it before it starts).
+        
+        Only works for queued runs with scheduled_for set.
+        """
+        run = await self.get_run(run_id, user_id=user_id)
+        if run is None:
+            return False
+        
+        if run.status != RunStatus.QUEUED or run.scheduled_for is None:
+            return False  # Can only cancel scheduled, not-yet-started runs
+        
+        return await self.delete_run(run_id, user_id=user_id)
 
 
 # Global instance

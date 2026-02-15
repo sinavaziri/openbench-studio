@@ -499,6 +499,46 @@ class RunNotesUpdate(BaseModel):
     )
 
 
+class ScheduledRunCreate(BaseModel):
+    """Request body for scheduling a future run."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "benchmark": "mmlu",
+                "model": "openai/gpt-4o",
+                "scheduled_for": "2024-01-16T10:00:00Z",
+                "limit": 100
+            }
+        }
+    )
+    
+    benchmark: str = Field(description="Benchmark name/identifier")
+    model: str = Field(description="Model identifier (e.g., 'openai/gpt-4o')")
+    scheduled_for: datetime = Field(description="When to execute the run (must be in the future)")
+    limit: Optional[int] = Field(None, ge=1, description="Maximum number of samples")
+    temperature: Optional[float] = Field(None, ge=0, le=2, description="Sampling temperature")
+    top_p: Optional[float] = Field(None, ge=0, le=1, description="Nucleus sampling probability")
+    max_tokens: Optional[int] = Field(None, ge=1, description="Maximum tokens in response")
+    timeout: Optional[int] = Field(None, ge=1, description="Request timeout in seconds")
+    epochs: Optional[int] = Field(None, ge=1, description="Number of evaluation epochs")
+    max_connections: Optional[int] = Field(None, ge=1, description="Maximum concurrent connections")
+
+
+class ScheduledRunUpdate(BaseModel):
+    """Request body for updating a scheduled run."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "scheduled_for": "2024-01-16T14:00:00Z"
+            }
+        }
+    )
+    
+    scheduled_for: datetime = Field(description="New scheduled time (must be in the future)")
+
+
 # =============================================================================
 # Benchmark Models
 # =============================================================================

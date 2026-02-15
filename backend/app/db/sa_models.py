@@ -76,6 +76,7 @@ class Run(Base):
     created_at = Column(String, nullable=False)
     started_at = Column(String, nullable=True)
     finished_at = Column(String, nullable=True)
+    scheduled_for = Column(String, nullable=True, index=True)  # ISO format datetime for scheduled runs
     artifact_dir = Column(String, nullable=True)
     exit_code = Column(Integer, nullable=True)
     error = Column(Text, nullable=True)
@@ -86,6 +87,12 @@ class Run(Base):
     notes = Column(Text, nullable=True)  # User notes for the run
     template_id = Column(String, ForeignKey("run_templates.template_id"), nullable=True, index=True)
     template_name = Column(String, nullable=True)  # Denormalized for display even if template deleted
+    
+    # Cost tracking fields
+    input_tokens = Column(Integer, nullable=True)  # Number of input/prompt tokens
+    output_tokens = Column(Integer, nullable=True)  # Number of output/completion tokens
+    total_tokens = Column(Integer, nullable=True)  # Total tokens used
+    estimated_cost = Column(Float, nullable=True)  # Estimated cost in USD
 
     # Relationships
     user = relationship("User", back_populates="runs")

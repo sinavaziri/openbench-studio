@@ -33,6 +33,13 @@ class Breakdown(BaseModel):
     items: list[BreakdownItem] = Field(default_factory=list)
 
 
+class TokenUsage(BaseModel):
+    """Token usage statistics extracted from benchmark output."""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+
+
 class Summary(BaseModel):
     """
     Stable summary schema (v1) for benchmark results.
@@ -45,6 +52,7 @@ class Summary(BaseModel):
     metrics: list[MetricValue] = Field(default_factory=list)
     breakdowns: list[Breakdown] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    token_usage: Optional[TokenUsage] = None
     raw: dict[str, Any] = Field(default_factory=lambda: {
         "source": "stdout.log",
         "hint": "best-effort extraction"
@@ -214,6 +222,120 @@ def extract_breakdowns_from_dict(data: dict) -> list[Breakdown]:
     return breakdowns
 
 
+def extract_token_usage_from_text(content: str) -> Optional[TokenUsage]:
+    """
+    Extract token usage from text output.
+    
+    Looks for patterns like:
+    - "tokens: 15000" or "total_tokens: 15000"
+    - "input_tokens: 10000" or "prompt_tokens: 10000"
+    - "output_tokens: 5000" or "completion_tokens: 5000"
+    """
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    
+    patterns = {
+        "input": [
+            r"(?:input_tokens|prompt_tokens|input tokens|prompt tokens)[:\s=]+(\d+)",
+            r'"(?:input_tokens|prompt_tokens)"[:\s]+(\d+)',
+        ],
+        "output": [
+            r"(?:output_tokens|completion_tokens|output tokens|completion tokens)[:\s=]+(\d+)",
+            r'"(?:output_tokens|completion_tokens)"[:\s]+(\d+)',
+        ],
+        "total": [
+            r"(?:total_tokens|total tokens)[:\s=]+(\d+)",
+            r'"total_tokens"[:\s]+(\d+)',
+        ],
+    }
+    
+    for category, category_patterns in patterns.items():
+        for pattern in category_patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                value = int(match.group(1))
+                if category == "input":
+                    input_tokens = max(input_tokens, value)
+                elif category == "output":
+                    output_tokens = max(output_tokens, value)
+                elif category == "total":
+                    total_tokens = max(total_tokens, value)
+                break
+    
+    if total_tokens > 0 and input_tokens == 0 and output_tokens == 0:
+        input_tokens = int(total_tokens * 0.3)
+        output_tokens = int(total_tokens * 0.7)
+    
+    if input_tokens > 0 or output_tokens > 0:
+        if total_tokens == 0:
+            total_tokens = input_tokens + output_tokens
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+        )
+    
+    return None
+
+
+def extract_token_usage_from_dict(data: dict) -> Optional[TokenUsage]:
+    """Extract token usage from structured data."""
+    input_tokens = 0
+    output_tokens = 0
+    total_tokens = 0
+    
+    usage_keys = ["usage", "token_usage", "tokens", "token_count"]
+    input_keys = ["input_tokens", "prompt_tokens", "input"]
+    output_keys = ["output_tokens", "completion_tokens", "output"]
+    total_keys = ["total_tokens", "total"]
+    
+    for usage_key in usage_keys:
+        if usage_key in data and isinstance(data[usage_key], dict):
+            usage = data[usage_key]
+            for key in input_keys:
+                if key in usage and isinstance(usage[key], (int, float)):
+                    input_tokens = int(usage[key])
+                    break
+            for key in output_keys:
+                if key in usage and isinstance(usage[key], (int, float)):
+                    output_tokens = int(usage[key])
+                    break
+            for key in total_keys:
+                if key in usage and isinstance(usage[key], (int, float)):
+                    total_tokens = int(usage[key])
+                    break
+            break
+    
+    for key in input_keys:
+        if key in data and isinstance(data[key], (int, float)):
+            input_tokens = max(input_tokens, int(data[key]))
+            break
+    for key in output_keys:
+        if key in data and isinstance(data[key], (int, float)):
+            output_tokens = max(output_tokens, int(data[key]))
+            break
+    for key in total_keys:
+        if key in data and isinstance(data[key], (int, float)):
+            total_tokens = max(total_tokens, int(data[key]))
+            break
+    
+    if total_tokens > 0 and input_tokens == 0 and output_tokens == 0:
+        input_tokens = int(total_tokens * 0.3)
+        output_tokens = int(total_tokens * 0.7)
+    
+    if input_tokens > 0 or output_tokens > 0:
+        if total_tokens == 0:
+            total_tokens = input_tokens + output_tokens
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+        )
+    
+    return None
+
+
 def parse_summary(artifact_dir: Path) -> Summary:
     """
     Parse benchmark output and produce a stable summary.
@@ -269,6 +391,8 @@ def parse_summary(artifact_dir: Path) -> Summary:
         summary.primary_metric = primary
         summary.metrics = metrics
         summary.breakdowns = extract_breakdowns_from_dict(result_data)
+        # Extract token usage from structured data
+        summary.token_usage = extract_token_usage_from_dict(result_data)
     else:
         # Fallback: try text extraction
         if stdout_content:
@@ -279,6 +403,10 @@ def parse_summary(artifact_dir: Path) -> Summary:
                 summary.raw["hint"] = "extracted from text patterns"
             else:
                 notes.append("Could not extract structured metrics from output")
+    
+    # Try to extract token usage from text if not already found
+    if summary.token_usage is None and stdout_content:
+        summary.token_usage = extract_token_usage_from_text(stdout_content)
     
     # Set notes
     if not summary.primary_metric:

@@ -16,12 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 import aiosqlite
-from httpx import AsyncClient, ASGITransport
 
 # Set test environment variables BEFORE importing app modules
-# SECRET_KEY must be >= 32 chars, ENCRYPTION_KEY must be exactly 32 chars
-os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only-32"
-os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32-chars-xxx"
+os.environ["OPENBENCH_SECRET_KEY"] = "test-secret-key-for-testing-only"
+os.environ["OPENBENCH_ENCRYPTION_KEY"] = "test-encryption-key-32-chars-xxx"  # Exactly 32 chars
 
 
 @pytest.fixture(scope="session")
@@ -179,38 +177,6 @@ async def test_db(temp_db_path: Path, monkeypatch) -> AsyncGenerator[aiosqlite.C
     async with aiosqlite.connect(temp_db_path) as db:
         db.row_factory = aiosqlite.Row
         yield db
-
-
-@pytest_asyncio.fixture
-async def client(test_db) -> AsyncGenerator[AsyncClient, None]:
-    """Create an async test client for API testing."""
-    from app.main import app
-    
-    # Mock the scheduler to prevent it from running during tests
-    with patch('app.services.scheduler.scheduler.start', new_callable=AsyncMock):
-        with patch('app.services.scheduler.scheduler.stop', new_callable=AsyncMock):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                yield ac
-
-
-@pytest_asyncio.fixture
-async def authenticated_client(client: AsyncClient, test_db) -> AsyncGenerator[tuple[AsyncClient, dict], None]:
-    """Create a test client with authentication."""
-    from app.services.auth import auth_service
-    from app.db.models import UserCreate
-    
-    # Create a test user
-    user_create = UserCreate(email="testuser@example.com", password="testpassword123")
-    user = await auth_service.create_user(user_create)
-    
-    # Get token
-    token = auth_service.create_user_token(user)
-    
-    # Add auth header to client
-    client.headers["Authorization"] = f"Bearer {token.access_token}"
-    
-    yield client, {"user": user, "token": token}
 
 
 @pytest.fixture
@@ -373,3 +339,47 @@ def mock_model_discovery():
     with patch('app.services.model_discovery.model_discovery_service') as mock:
         mock.get_available_models = AsyncMock(return_value=mock_providers)
         yield mock
+
+
+# ============================================================================
+# HTTP Client fixtures
+# ============================================================================
+
+@pytest_asyncio.fixture
+async def client(test_db):
+    """Create an async test client for API testing."""
+    import sys
+    from httpx import AsyncClient, ASGITransport
+    
+    # Mock migrations module before importing app.main
+    mock_migrations = MagicMock()
+    mock_migrations.run_migrations = MagicMock()
+    sys.modules['app.db.migrations'] = mock_migrations
+    
+    from app.main import app
+    
+    # Mock the scheduler to prevent it from running during tests
+    with patch('app.services.scheduler.scheduler.start', new_callable=AsyncMock):
+        with patch('app.services.scheduler.scheduler.stop', new_callable=AsyncMock):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                yield ac
+
+
+@pytest_asyncio.fixture
+async def authenticated_client(client):
+    """Create a test client with authentication."""
+    from app.services.auth import auth_service
+    from app.db.models import UserCreate
+    
+    # Create a test user
+    user_create = UserCreate(email="testuser@example.com", password="testpassword123")
+    user = await auth_service.create_user(user_create)
+    
+    # Get token
+    token = auth_service.create_user_token(user)
+    
+    # Add auth header to client
+    client.headers["Authorization"] = f"Bearer {token.access_token}"
+    
+    yield client, {"user": user, "token": token}

@@ -1,5 +1,8 @@
 # OpenBench Web UI
 
+[![CI](https://github.com/openbench/openbench-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/openbench/openbench-studio/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/openbench/openbench-studio/branch/main/graph/badge.svg)](https://codecov.io/gh/openbench/openbench-studio)
+
 A modern web interface for running and managing OpenBench benchmarks.
 
 ## Features
@@ -153,6 +156,40 @@ data/runs/<run_id>/
 ├── stderr.log       # Standard error
 └── summary.json     # Parsed results (if available)
 ```
+
+## Testing
+
+Run the backend test suite:
+
+```bash
+cd backend
+
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=app --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_routes_auth.py
+
+# Run with verbose output
+pytest -v
+```
+
+### Pre-commit Hooks
+
+Set up pre-commit hooks for code quality:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This will run linting and formatting checks before each commit.
 
 ## License
 
