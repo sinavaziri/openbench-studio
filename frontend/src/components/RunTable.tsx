@@ -108,6 +108,28 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
+function formatDuration(startedAt?: string, finishedAt?: string): string {
+  if (!startedAt) return '—';
+  
+  const start = new Date(startedAt);
+  const end = finishedAt ? new Date(finishedAt) : new Date();
+  const diffMs = end.getTime() - start.getTime();
+  
+  if (diffMs < 0) return '—';
+  
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
+}
+
 // Mobile Card Component
 function RunCard({ 
   run, 
@@ -198,6 +220,15 @@ function RunCard({
             <span className="text-muted-foreground">•</span>
             <span className="text-foreground tabular-nums font-medium">
               {formatMetric(run.primary_metric, run.primary_metric_name)}
+            </span>
+          </>
+        )}
+        
+        {run.started_at && (
+          <>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-muted-foreground tabular-nums">
+              {formatDuration(run.started_at, run.finished_at)}
             </span>
           </>
         )}
@@ -341,8 +372,8 @@ export default function RunTable({
   }
 
   const gridCols = selectable
-    ? 'grid-cols-[40px_160px_1fr_90px_70px_100px_120px_80px]'
-    : 'grid-cols-[180px_1fr_90px_70px_100px_120px_80px]';
+    ? 'grid-cols-[40px_150px_1fr_80px_60px_60px_90px_100px_70px]'
+    : 'grid-cols-[160px_1fr_80px_60px_60px_90px_100px_70px]';
 
   return (
     <>
@@ -437,6 +468,7 @@ export default function RunTable({
           <div>Model</div>
           <div>Result</div>
           <div>Cost</div>
+          <div>Duration</div>
           <div>Tags</div>
           <div>Status</div>
           <div className="text-right">Time</div>
@@ -513,6 +545,11 @@ export default function RunTable({
                     <span className="text-[14px] text-muted-foreground">—</span>
                   )}
                 </div>
+                <div>
+                  <span className="text-[13px] text-muted-foreground tabular-nums">
+                    {formatDuration(run.started_at, run.finished_at)}
+                  </span>
+                </div>
                 <div className="flex items-center gap-1 flex-wrap">
                   {displayTags.map((tag) => (
                     <span
@@ -577,6 +614,11 @@ export default function RunTable({
                 ) : (
                   <span className="text-[14px] text-muted-foreground">—</span>
                 )}
+              </div>
+              <div>
+                <span className="text-[13px] text-muted-foreground tabular-nums">
+                  {formatDuration(run.started_at, run.finished_at)}
+                </span>
               </div>
               <div className="flex items-center gap-1 flex-wrap">
                 {displayTags.map((tag) => (

@@ -674,6 +674,46 @@ export default function NewRun() {
             )}
           </div>
 
+          {/* Cost Estimate */}
+          {selectedBenchmark && model && model !== 'custom' && (() => {
+            // Find selected model and its pricing
+            const selectedModel = compatibleProviders
+              .flatMap(p => p.models)
+              .find(m => m.id === model);
+            
+            if (selectedModel?.pricing && selectedBenchmark.estimated_tokens) {
+              const estimatedTokens = selectedBenchmark.estimated_tokens * (limit || selectedBenchmark.sample_count || 100);
+              const inputCost = (selectedModel.pricing.input_per_1m || 0) * (estimatedTokens * 0.3) / 1_000_000;
+              const outputCost = (selectedModel.pricing.output_per_1m || 0) * (estimatedTokens * 0.7) / 1_000_000;
+              const totalCost = inputCost + outputCost;
+              
+              if (totalCost > 0) {
+                return (
+                  <div className="p-4 bg-background-secondary border border-border rounded">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-1">
+                          Estimated Cost
+                        </p>
+                        <p className="text-[18px] text-foreground tabular-nums">
+                          ${totalCost < 0.01 ? totalCost.toFixed(4) : totalCost.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-right text-[12px] text-muted-foreground">
+                        <p>~{(estimatedTokens / 1000).toFixed(0)}K tokens</p>
+                        <p>{limit || selectedBenchmark.sample_count || '?'} samples</p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-2">
+                      * Estimate based on average token usage. Actual cost may vary.
+                    </p>
+                  </div>
+                );
+              }
+            }
+            return null;
+          })()}
+
           {/* Submit Button */}
           <button
             type="submit"

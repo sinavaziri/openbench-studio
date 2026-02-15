@@ -71,6 +71,10 @@ export default function RunDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
+  // Cancel confirmation
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  
   // Tags
   const [editingTags, setEditingTags] = useState(false);
   const [newTag, setNewTag] = useState('');
@@ -275,13 +279,17 @@ export default function RunDetail() {
 
   const handleCancel = async () => {
     if (!id) return;
+    setCanceling(true);
     try {
       await api.cancelRun(id);
       toast('Canceling run...', { icon: '⏳' });
+      setShowCancelConfirm(false);
       loadRun();
     } catch (err) {
       const parsed = parseError(err, 'canceling-run');
       toast.error(parsed.message);
+    } finally {
+      setCanceling(false);
     }
   };
 
@@ -590,7 +598,21 @@ export default function RunDetail() {
           <div className="grid grid-cols-2 sm:grid-cols-1 gap-4">
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">Run ID</p>
-              <p className="text-[14px] text-foreground font-mono">{run.run_id.slice(0, 8)}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[14px] text-foreground font-mono">{run.run_id.slice(0, 8)}</p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(run.run_id);
+                    toast.success('Run ID copied to clipboard');
+                  }}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Copy full run ID"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
             </div>
             <div>
               <p className="text-[12px] text-muted-foreground mb-1">Created</p>
@@ -642,12 +664,37 @@ export default function RunDetail() {
           {/* Action Buttons */}
           <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row lg:flex-col gap-3">
             {isActive && (
-              <button
-                onClick={handleCancel}
-                className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
-              >
-                Cancel Run
-              </button>
+              <>
+                {!showCancelConfirm ? (
+                  <button
+                    onClick={() => setShowCancelConfirm(true)}
+                    className="w-full sm:flex-1 lg:w-full px-4 py-3 sm:py-2 text-[13px] text-muted border border-border-secondary hover:border-muted-foreground hover:text-foreground transition-colors min-h-[44px]"
+                  >
+                    Cancel Run
+                  </button>
+                ) : (
+                  <div className="p-3 bg-warning-bg border border-warning-border">
+                    <p className="text-[12px] text-warning mb-3">
+                      Cancel this running benchmark?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCancel}
+                        disabled={canceling}
+                        className="flex-1 px-3 py-2 text-[12px] text-accent-foreground bg-warning hover:opacity-90 disabled:opacity-50 transition-colors min-h-[44px]"
+                      >
+                        {canceling ? 'Canceling...' : 'Yes, Cancel'}
+                      </button>
+                      <button
+                        onClick={() => setShowCancelConfirm(false)}
+                        className="flex-1 px-3 py-2 text-[12px] text-muted border border-border-secondary hover:text-foreground transition-colors min-h-[44px]"
+                      >
+                        No, Keep Running
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
             
             {run.config && !isActive && (

@@ -239,10 +239,12 @@ export interface RunSummary {
   model: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
   created_at: string;
+  started_at?: string;
   finished_at?: string;
   scheduled_for?: string;
   primary_metric?: number;
   primary_metric_name?: string;
+  estimated_cost?: number;
   tags: string[];
   notes?: string;
   template_name?: string;

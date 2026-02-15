@@ -546,7 +546,18 @@ export default function Dashboard() {
             reconnectAttempts={reconnectAttempts}
           />
         </div>
-        <div className="grid grid-cols-4 gap-8">
+        {loading ? (
+          /* Skeleton loader for stats */
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-3 w-16 bg-border rounded mb-4" />
+                <div className="h-10 w-20 bg-border rounded" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             <div>
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.1em] mb-4">
                 Total
@@ -575,6 +586,7 @@ export default function Dashboard() {
               <p className="text-[32px] text-foreground tabular-nums">{stats.failed}</p>
             </div>
           </div>
+        )}
       </div>
 
       {/* Error Message */}
